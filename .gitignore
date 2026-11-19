@@ -1,0 +1,9 @@
+node_modules/
+bin/
+obj/
+dist/
+fable_modules/
+*.fs.js
+*.fs.js.map
+.DS_Store
+.fable/

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SmashClone</RootNamespace>
+    <WarningLevel>4</WarningLevel>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- Reihenfolge = Abhängigkeitsreihenfolge (F# kompiliert strikt von oben nach unten) -->
+  <ItemGroup>
+    <Compile Include="src/Types.fs" />
+    <Compile Include="src/Audio.fs" />
+    <Compile Include="src/AI.fs" />
+    <Compile Include="src/Physics.fs" />
+    <Compile Include="src/Renderer.fs" />
+    <Compile Include="src/App.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="5.0.0" />
+    <PackageReference Include="Fable.Browser.Dom" Version="2.20.0" />
+  </ItemGroup>
+
+</Project>

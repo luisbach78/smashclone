@@ -1,0 +1,16 @@
+{
+  "name": "smash-clone",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "2D-Platform-Fighter in F# (Fable) auf HTML5 Canvas",
+  "scripts": {
+    "setup": "dotnet tool restore && dotnet restore",
+    "dev": "dotnet fable watch SmashClone.fsproj --run npx vite",
+    "build": "dotnet fable SmashClone.fsproj --run npx vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  }
+}
