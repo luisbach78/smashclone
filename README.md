@@ -99,6 +99,23 @@ Die CPU sieht den Gegner mit dieser Verzögerung und hält ihre Eingaben zwische
 | Schild (+ Richtung Rolle, in der Luft Air-Dodge) | H | Ö |
 | Griff (danach Richtung = Wurf) | H + F | Ö + K |
 
+### Online gegen einen Freund (zwei Geräte)
+
+1. Beide öffnen https://luisbach78.github.io/smashclone/ (auch am Handy oder Tablet).
+2. Einer wählt im Titelmenü **ONLINE · 2 GERÄTE** und dann **RAUM ERSTELLEN**. Er bekommt einen vierstelligen Raumcode und einen Einladungslink, den er kopieren oder teilen kann.
+3. Der andere öffnet den Link oder wählt ebenfalls ONLINE und gibt den Code ein.
+4. Beide landen zusammen in der Kämpferwahl. Wer den Raum erstellt hat, ist Spieler 1.
+
+Die Geräte verbinden sich direkt per WebRTC (PeerJS), der öffentliche PeerJS-Dienst vermittelt nur den Verbindungsaufbau. Übertragen werden nur die Eingaben. Beide Geräte rechnen das Spiel bit-genau gleich (eigene deterministische Mathematik statt Math.sin/cos/atan2), fehlende Eingaben des Gegners werden vorhergesagt und bei Bedarf per Rollback korrigiert. Oben links zeigt eine Anzeige Ping und Verbindungsstatus. In sehr strengen Netzen (manche Firmen- oder Uni-WLANs) kann der direkte Verbindungsaufbau scheitern. Online funktioniert über den GitHub-Link, nicht über die lokale HTML-Datei.
+
+### Touch (Handy und Tablet)
+
+Links unten ist ein virtueller Stick (erscheint dort, wo der Daumen aufsetzt), rechts liegen die Knöpfe A (Angriff), B (Smash und Specials), ▲ (Sprung) und S (Schild, zusammen mit A = Griff). Oben in der Mitte sind START und MENÜ. Im Menü bestätigt A und S geht zurück. Gespielt wird im Querformat, am besten über „Zum Home-Bildschirm“ im Vollbild.
+
+### Pause
+
+Im Kampf pausiert START (Enter, Leertaste, OPTIONS am Controller oder START auf dem Touchscreen). In der Pause geht es mit START weiter, MENÜ (Esc oder SHARE) beendet den Kampf.
+
 ### Controller (PS4, PS5, Xbox, Switch Pro)
 
 Ein per Bluetooth oder USB verbundener Controller funktioniert direkt im Browser (Chrome, Safari, Edge oder Firefox). Controller 1 steuert Spieler 1, ein zweiter Controller Spieler 2. Tastatur und Controller lassen sich mischen, zum Beispiel Spieler 1 am Controller und Spieler 2 an den Pfeiltasten.
@@ -146,6 +163,7 @@ Die Dateien stehen in `SmashClone.fsproj` in Abhängigkeitsreihenfolge.
 | `src/AI.fs` | CPU mit Schwierigkeitsprofilen, Reaktionsverzögerung, Energie-Management, Smash-Ball-Jagd und Ultra-Timing |
 | `src/Physics.fs` | Movesets, Zustandsmaschine, Input-Buffer, Projektile, Reflektor, Stasis, Energie und Stale-Moves, bewegliche Plattformen, Smash-Ball, Ultra-Smash, Knockback, Partikel |
 | `src/Renderer.fs` | Cel-Shading-Renderer mit Skelett-Kämpfern, fünf Parallax-Stages, Items, Stage-Ereignisse, dynamische Kamera, VFX, Ultra-Cut-Ins, HUD, Titel, Kämpferwahl, Stage-Wahl, Siegerbildschirm |
+| `src/Net.fs` | WebRTC-Verbindung über PeerJS: Raum erstellen, beitreten, Nachrichten senden |
 | `src/App.fs` | Input, Menü-Ablauf und Main-Loop |
 
 Die Simulation ist eine reine Funktion `Physics.step : Input list -> Game -> Game` und läuft über einen Akkumulator immer in Schritten von 1/60 Sekunde. Bildwiederholraten von 60 Hz und 144 Hz ergeben dadurch identische Physik und Frame-Data. Auch der Zufall (Partikel, KI) steckt als Seed im Game-State.
