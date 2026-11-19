@@ -758,6 +758,9 @@ let private pageUrl () : string = jsNative
 [<Emit("(new URLSearchParams(location.search).get('raum') || '')")>]
 let private roomParam () : string = jsNative
 
+[<Emit("(new URLSearchParams(location.search).get('relay') === '1')")>]
+let private relayParam () : bool = jsNative
+
 [<Emit("window.history.replaceState(null, '', location.pathname)")>]
 let private clearRoomParam () : unit = jsNative
 
@@ -939,6 +942,8 @@ let private setupOnline () =
         1000
     )
     |> ignore
+
+    Net.forceRelay <- relayParam ()
 
     // Einladungslink ?raum=CODE: direkt beitreten
     let code = roomParam ()

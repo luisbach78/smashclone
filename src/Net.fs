@@ -68,9 +68,12 @@ let private peerOptions () =
                            createObj [ "urls" ==> "stun:stun1.l.google.com:19302" ]
                            createObj [ "urls" ==> "stun:global.stun.twilio.com:3478" ] |] ] ]
 
-/// Öffentliche MQTT-Server (WebSocket über TLS) für den Relay-Weg
+/// Öffentliche MQTT-Server (WebSocket über TLS) für den Relay-Weg: Adresse, Benutzer, Passwort.
+/// shiftr.io läuft über den Standardport 443 und kommt damit auch durch strenge Netze.
 let private brokers =
-    [ "wss://broker.hivemq.com:8884/mqtt"; "wss://broker.emqx.io:8084/mqtt"; "wss://test.mosquitto.org:8081/mqtt" ]
+    [ "wss://public.cloud.shiftr.io", "public", "public"
+      "wss://broker.hivemq.com:8884/mqtt", "", ""
+      "wss://broker.emqx.io:8084/mqtt", "", "" ]
 
 let private topicBase (code: string) = "smashclone-game/v1/" + code.ToUpperInvariant()
 
@@ -87,6 +90,9 @@ let mutable private relayActive: obj = null
 let mutable private relayOut = ""
 let mutable private timers: int list = []
 let mutable private session = 0
+
+/// Nur das Relay benutzen (zum Testen: Seite mit ?relay=1 öffnen)
+let mutable forceRelay = false
 
 /// Statusmeldungen: "open", "connected", "closed", "error:<typ>"
 let mutable onStatus: string -> unit = ignore
@@ -182,7 +188,7 @@ let private publishOn (client: obj) (topic: string) (msg: obj) =
     with _ ->
         ()
 
-let private connectRelay (url: string) (subscribeTo: string) (onMessage: obj -> obj -> unit) (onReady: obj -> unit) =
+let private connectRelay (url: string, user: string, password: string) (subscribeTo: string) (onMessage: obj -> obj -> unit) (onReady: obj -> unit) =
     let connectFn: obj =
         if isNull mqttModule?connect then mqttModule?``default``?connect else mqttModule?connect
 
@@ -192,6 +198,8 @@ let private connectRelay (url: string) (subscribeTo: string) (onMessage: obj -> 
             $ (url,
                createObj
                    [ "clientId" ==> ("sc-" + string (int (random () * 1e9)))
+                     "username" ==> (if user = "" then null else user)
+                     "password" ==> (if password = "" then null else password)
                      "keepalive" ==> 20
                      "reconnectPeriod" ==> 2000
                      "connectTimeout" ==> 6000
@@ -227,9 +235,9 @@ let private relayData (client: obj) (msg: obj) =
 let private hostRelay (code: string) (mySession: int) =
     let topics = topicBase code
 
-    for url in brokers do
+    for broker in brokers do
         connectRelay
-            url
+            broker
             (topics + "/h")
             (fun client msg ->
                 if session = mySession then
@@ -251,9 +259,9 @@ let private joinRelay (code: string) (mySession: int) =
     let topics = topicBase code
     let mutable ready: obj list = []
 
-    for url in brokers do
+    for broker in brokers do
         connectRelay
-            url
+            broker
             (topics + "/g")
             (fun client msg ->
                 if session = mySession then
@@ -335,22 +343,25 @@ let join (code: string) =
             onStatus "trying-relay"
             joinRelay code mySession
 
-    try
-        peer <- newPeer PeerClass (peerOptions ())
-
-        peer?on (
-            "open",
-            fun (_: obj) ->
-                if session = mySession then
-                    onStatus "open"
-                    attachDirect (peer?connect (peerId code, createObj [ "reliable" ==> true; "serialization" ==> "json" ]))
-        )
-
-        peer?on ("error", fun (_: obj) -> startRelay ())
-    with _ ->
+    if forceRelay then
         startRelay ()
+    else
+        try
+            peer <- newPeer PeerClass (peerOptions ())
 
-    later 5000 startRelay
+            peer?on (
+                "open",
+                fun (_: obj) ->
+                    if session = mySession then
+                        onStatus "open"
+                        attachDirect (peer?connect (peerId code, createObj [ "reliable" ==> true; "serialization" ==> "json" ]))
+            )
+
+            peer?on ("error", fun (_: obj) -> startRelay ())
+        with _ ->
+            startRelay ()
+
+        later 5000 startRelay
 
 let send (msg: obj) =
     match transport with

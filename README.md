@@ -106,7 +106,7 @@ Die CPU sieht den Gegner mit dieser Verzögerung und hält ihre Eingaben zwische
 3. Der andere öffnet den Link oder wählt ebenfalls ONLINE und gibt den Code ein.
 4. Beide landen zusammen in der Kämpferwahl. Wer den Raum erstellt hat, ist Spieler 1.
 
-Die Geräte verbinden sich zuerst direkt per WebRTC (PeerJS). Klappt das nicht (häufig im Mobilfunk oder in strengen WLANs), läuft die Verbindung nach wenigen Sekunden automatisch über einen öffentlichen MQTT-Relay-Server (HiveMQ, EMQX oder Mosquitto). Die Anzeige oben links zeigt dann „Relay“. Übertragen werden nur die Eingaben. Beide Geräte rechnen das Spiel bit-genau gleich (eigene deterministische Mathematik statt Math.sin/cos/atan2), fehlende Eingaben des Gegners werden vorhergesagt und bei Bedarf per Rollback korrigiert. Oben links zeigt eine Anzeige Ping und Verbindungsstatus. Online funktioniert über den GitHub-Link, nicht über die lokale HTML-Datei.
+Die Geräte verbinden sich zuerst direkt per WebRTC (PeerJS). Klappt das nicht (häufig im Mobilfunk oder in strengen WLANs), läuft die Verbindung nach wenigen Sekunden automatisch über einen öffentlichen MQTT-Relay-Server (zuerst shiftr.io über Port 443, sonst HiveMQ oder EMQX). Die Anzeige oben links zeigt dann „Relay“. Übertragen werden nur die Eingaben. Beide Geräte rechnen das Spiel bit-genau gleich (eigene deterministische Mathematik statt Math.sin/cos/atan2), fehlende Eingaben des Gegners werden vorhergesagt und bei Bedarf per Rollback korrigiert. Oben links zeigt eine Anzeige Ping und Verbindungsstatus. Online funktioniert über den GitHub-Link, nicht über die lokale HTML-Datei.
 
 ### Touch (Handy und Tablet)
 
