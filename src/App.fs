@@ -625,6 +625,7 @@ let private onlineStart () =
     { Physics.initialGame with
         Screen = CharSelect
         Mode = TwoPlayer
+        OnlineMatch = true
         OptionIndex = 1 }
 
 /// Kurze Prüfsumme über alles, was das Spielgeschehen bestimmt
@@ -650,6 +651,7 @@ let mutable private pendingEdges = 0
 let mutable private stalledTicks = 0
 let mutable private pingMs = 0.0
 let mutable private desync = false
+let mutable private lastReceive = 0.0
 let private localInputs = Dictionary<int, int>()
 let private remoteInputs = Dictionary<int, int>()
 let private usedRemote = Dictionary<int, int>()
@@ -680,6 +682,8 @@ let private resetNet (slot: int) =
         remoteInputs[f] <- 0
 
 let private receive (msg: obj) =
+    lastReceive <- now ()
+
     match string msg?t with
     | "i" ->
         // Eingaben des Gegners (mit Wiederholung der letzten Frames gegen Verluste)
@@ -873,6 +877,7 @@ let private endOnline (message: string) =
 
 let private startOnline () =
     resetNet (if hosting then 0 else 1)
+    lastReceive <- now ()
     game <- onlineStart ()
     online <- true
     closeLobby ()
@@ -909,6 +914,19 @@ let private setupOnline () =
                     Net.close ()
                     lobbyMessage "Keine Verbindung zum Online-Dienst. Prüfe die Internetverbindung und versuch es noch einmal."
             | _ -> ()
+
+    // Herzschlag unabhängig von der Bildrate: erkennt abgerissene Verbindungen
+    // (z. B. geschlossener Tab), auch wenn WebRTC kein "close" meldet
+    window.setInterval (
+        (fun () ->
+            if online then
+                Net.send (createObj [ "t" ==> "k" ])
+
+                if now () - lastReceive > 10000.0 then
+                    endOnline "Die Verbindung zum Mitspieler ist abgerissen."),
+        1000
+    )
+    |> ignore
 
     // Einladungslink ?raum=CODE: direkt beitreten
     let code = roomParam ()

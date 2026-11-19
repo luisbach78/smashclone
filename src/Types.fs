@@ -597,6 +597,8 @@ type Game =
       Paused: bool
       /// Titelmenü hat "ONLINE" gewählt (die App öffnet daraufhin die Lobby)
       OpenOnline: bool
+      /// Läuft gerade ein Online-Match über zwei Geräte
+      OnlineMatch: bool
       ItemsOn: bool
       HazardsOn: bool
       Items: Item list

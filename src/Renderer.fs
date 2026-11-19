@@ -7224,7 +7224,10 @@ let private drawCharSelect (ctx: Ctx) (g: Game) =
     ctx.textBaseline <- "middle"
     outlinedText ctx "KÄMPFERWAHL" 70.0 39.0 "#ffffff" 6.0
     ctx.font <- sprintf "italic 19px %s" displayFont
-    let modeText = if g.Mode = VsCpu then sprintf "1P vs. CPU  ·  %s" (difficultyName g.Difficulty) else "2P LOKAL"
+    let modeText =
+        if g.OnlineMatch then "ONLINE  ·  2 GERÄTE"
+        elif g.Mode = VsCpu then sprintf "1P vs. CPU  ·  %s" (difficultyName g.Difficulty)
+        else "2P LOKAL"
     outlinedText ctx modeText 370.0 41.0 "#ffd166" 4.0
 
     // Karten im 4x2-Raster
