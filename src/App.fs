@@ -71,17 +71,21 @@ let private keyId (e: KeyboardEvent) =
 let private blockedDefaults =
     set [ "ArrowLeft"; "ArrowRight"; "ArrowUp"; "ArrowDown"; "Space"; "Enter" ]
 
+[<Emit("($0.target && $0.target.tagName === 'INPUT')")>]
+let private fromTextField (_e: Event) : bool = jsNative
+
 let private onKeyDown (e: Event) =
     let k = e :?> KeyboardEvent
     let id = keyId k
     SmashClone.Audio.unlock ()
 
-    if blockedDefaults.Contains id then
-        k.preventDefault ()
+    if not (fromTextField e) then
+        if blockedDefaults.Contains id then
+            k.preventDefault ()
 
-    if not k.repeat then
-        keysDown.Add id |> ignore
-        keysPressed.Add id |> ignore
+        if not k.repeat then
+            keysDown.Add id |> ignore
+            keysPressed.Add id |> ignore
 
 let private onKeyUp (e: Event) =
     let k = e :?> KeyboardEvent
@@ -385,7 +389,7 @@ let private startMatch (g: Game) : Game =
 
 let private updateTitle (ui: UiInput) (g: Game) : Game =
     let pad = merged ui
-    let moved = menuMove pad 3 g
+    let moved = menuMove pad 4 g
 
     // Links/Rechts ändert die CPU-Stärke, egal welche Zeile gewählt ist
     let tuned =
@@ -396,6 +400,7 @@ let private updateTitle (ui: UiInput) (g: Game) : Game =
         match tuned.MenuIndex with
         | 0 -> toCharSelect VsCpu tuned
         | 1 -> toCharSelect TwoPlayer tuned
+        | 2 -> { tuned with OpenOnline = true } |> withSound SfxMenuSelect
         | _ ->
             let i = allDifficulties |> List.findIndex (fun d -> d = tuned.Difficulty)
             { tuned with Difficulty = List.item ((i + 1) % 4) allDifficulties } |> withSound SfxMenuMove
@@ -566,6 +571,439 @@ let mutable private game = Physics.initialGame
 let mutable private lastTime = 0.0
 let mutable private accumulator = 0.0
 
+// ---------------------------------------------------------------------------
+// Online-Modus: Rollback-Netcode
+// Beide Geräte simulieren dasselbe Spiel. Ausgetauscht werden nur die Eingaben.
+// Fehlt die Eingabe des Gegners noch, wird sie vorhergesagt (letzte bekannte
+// Eingabe). Kommt sie später anders an, wird zurückgespult und neu gerechnet.
+// ---------------------------------------------------------------------------
+
+let private inputDelay = 2
+let private maxRollback = 12
+
+let private bit (b: bool) (i: int) = if b then 1 <<< i else 0
+let private has (bits: int) (i: int) = bits &&& (1 <<< i) <> 0
+let private heldMask = 0xFF
+
+/// Eingabe eines Spielers als Bitmaske: 0–7 gehaltene Tasten, 8–13 Menü-Tipper, 14 Start, 15 Esc
+let private encode (inp: Input) (pad: MenuPad) (start: bool) (escape: bool) =
+    bit inp.Left 0 ||| bit inp.Right 1 ||| bit inp.Up 2 ||| bit inp.Down 3
+    ||| bit inp.Jump 4 ||| bit inp.Attack 5 ||| bit inp.Special 6 ||| bit inp.Shield 7
+    ||| bit pad.Up 8 ||| bit pad.Down 9 ||| bit pad.Left 10 ||| bit pad.Right 11
+    ||| bit pad.Accept 12 ||| bit pad.Cancel 13 ||| bit start 14 ||| bit escape 15
+
+let private decodeInput (b: int) : Input =
+    { Left = has b 0
+      Right = has b 1
+      Up = has b 2
+      Down = has b 3
+      Jump = has b 4
+      Attack = has b 5
+      Special = has b 6
+      Shield = has b 7 }
+
+let private decodePad (b: int) : MenuPad =
+    { Up = has b 8
+      Down = has b 9
+      Left = has b 10
+      Right = has b 11
+      Accept = has b 12
+      Cancel = has b 13 }
+
+let private stepOnline (hostBits: int) (guestBits: int) (g: Game) =
+    let ui =
+        { P1 = decodePad hostBits
+          P2 = decodePad guestBits
+          Start = has hostBits 14 || has guestBits 14
+          Escape = has hostBits 15 || has guestBits 15
+          ToggleDebug = false }
+
+    update ui (decodeInput hostBits) (decodeInput guestBits) g
+
+/// Startzustand eines Online-Matches: auf beiden Geräten exakt identisch
+let private onlineStart () =
+    { Physics.initialGame with
+        Screen = CharSelect
+        Mode = TwoPlayer
+        OptionIndex = 1 }
+
+/// Kurze Prüfsumme über alles, was das Spielgeschehen bestimmt
+let private checksum (g: Game) =
+    let text =
+        g.Players
+        |> List.map (fun p -> sprintf "%d|%.6f|%.6f|%.4f|%d|%d" p.Id p.Pos.X p.Pos.Y p.Percent p.Stocks p.StateFrame)
+        |> String.concat ";"
+
+    let mutable h = 17
+
+    for c in text + string g.Seed + string g.Frame do
+        h <- (h * 31 + int c) &&& 0x3FFFFFFF
+
+    h
+
+let mutable private online = false
+let mutable private localSlot = 0
+let mutable private netFrame = 0
+let mutable private lastRemote = -1
+let mutable private rollbackFrom = System.Int32.MaxValue
+let mutable private pendingEdges = 0
+let mutable private stalledTicks = 0
+let mutable private pingMs = 0.0
+let mutable private desync = false
+let private localInputs = Dictionary<int, int>()
+let private remoteInputs = Dictionary<int, int>()
+let private usedRemote = Dictionary<int, int>()
+let private stateHistory = Dictionary<int, Game>()
+let private localHashes = Dictionary<int, int>()
+let private remoteHashes = Dictionary<int, int>()
+
+[<Emit("performance.now()")>]
+let private now () : float = jsNative
+
+let private resetNet (slot: int) =
+    localSlot <- slot
+    netFrame <- 0
+    lastRemote <- inputDelay - 1
+    rollbackFrom <- System.Int32.MaxValue
+    pendingEdges <- 0
+    stalledTicks <- 0
+    desync <- false
+    localInputs.Clear()
+    remoteInputs.Clear()
+    usedRemote.Clear()
+    stateHistory.Clear()
+    localHashes.Clear()
+    remoteHashes.Clear()
+
+    for f in 0 .. inputDelay - 1 do
+        localInputs[f] <- 0
+        remoteInputs[f] <- 0
+
+let private receive (msg: obj) =
+    match string msg?t with
+    | "i" ->
+        // Eingaben des Gegners (mit Wiederholung der letzten Frames gegen Verluste)
+        let first: int = msg?f
+        let bits: int array = msg?b
+
+        bits
+        |> Array.iteri (fun i b ->
+            let f = first + i
+
+            if not (remoteInputs.ContainsKey f) then
+                remoteInputs[f] <- b
+
+                match usedRemote.TryGetValue f with
+                | true, used when used <> b -> rollbackFrom <- min rollbackFrom f
+                | _ -> ())
+
+        while remoteInputs.ContainsKey(lastRemote + 1) do
+            lastRemote <- lastRemote + 1
+    | "h" ->
+        let f: int = msg?f
+        remoteHashes[f] <- msg?h
+
+        match localHashes.TryGetValue f with
+        | true, h when h <> (msg?h: int) -> desync <- true
+        | _ -> ()
+    | "p" -> Net.send (createObj [ "t" ==> "q"; "s" ==> msg?s ])
+    | "q" -> pingMs <- now () - (msg?s: float)
+    | _ -> ()
+
+/// Einen Frame rechnen; die Eingabe des Gegners ist bekannt oder vorhergesagt
+let private simulate (f: int) (g: Game) =
+    let local = match localInputs.TryGetValue f with | true, b -> b | _ -> 0
+
+    let remote =
+        match remoteInputs.TryGetValue f with
+        | true, b -> b
+        | _ ->
+            // Vorhersage: gehaltene Tasten wie zuletzt bekannt, keine Menü-Tipper
+            match remoteInputs.TryGetValue lastRemote with
+            | true, b -> b &&& heldMask
+            | _ -> 0
+
+    usedRemote[f] <- remote
+    stateHistory[f] <- g
+    if localSlot = 0 then stepOnline local remote g else stepOnline remote local g
+
+// ---------------------------------------------------------------------------
+// Lobby (HTML-Overlay): Raum erstellen, beitreten, Einladungslink
+// ---------------------------------------------------------------------------
+
+let mutable private overlayOpen = false
+let mutable private lobbyCode = ""
+let mutable private hosting = false
+
+let private lobby = document.createElement "div"
+let private badge = document.createElement "div"
+
+[<Emit("(navigator.share ? navigator.share({ title: 'SmashClone', text: $0, url: $1 }).catch(() => {}) : null)")>]
+let private share (_text: string) (_url: string) : unit = jsNative
+
+[<Emit("(navigator.clipboard ? navigator.clipboard.writeText($0).catch(() => {}) : null)")>]
+let private copyText (_text: string) : unit = jsNative
+
+[<Emit("!!navigator.share")>]
+let private canShare () : bool = jsNative
+
+[<Emit("(location.origin + location.pathname)")>]
+let private pageUrl () : string = jsNative
+
+[<Emit("(new URLSearchParams(location.search).get('raum') || '')")>]
+let private roomParam () : string = jsNative
+
+[<Emit("window.history.replaceState(null, '', location.pathname)")>]
+let private clearRoomParam () : unit = jsNative
+
+let private inviteLink (code: string) = pageUrl () + "?raum=" + code
+
+let private escapeHtml (s: string) =
+    s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
+
+let private closeLobby () =
+    overlayOpen <- false
+    lobby.className <- "lobby"
+    keysDown.Clear()
+    keysPressed.Clear()
+
+let rec private showLobby (html: string) (bind: unit -> unit) =
+    overlayOpen <- true
+    lobby.className <- "lobby open"
+    lobby.innerHTML <- "<div class=\"lobby-card\"><h2>ONLINE-MATCH</h2>" + html + "</div>"
+    bind ()
+
+and private byId (id: string) = document.getElementById id
+
+and private onClick (id: string) (action: unit -> unit) =
+    let e = byId id
+
+    if not (isNull e) then
+        e.addEventListener ("click", fun _ -> action ())
+
+and private lobbyMenu () =
+    showLobby
+        """<p>Spiel gegen einen Freund auf einem anderen Gerät.</p>
+           <button id="lb-host" class="lb-main">RAUM ERSTELLEN</button>
+           <div class="lb-or">oder Code eingeben</div>
+           <div class="lb-row"><input id="lb-code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+           <button id="lb-join">BEITRETEN</button></div>
+           <button id="lb-back" class="lb-link">Zurück</button>"""
+        (fun () ->
+            onClick "lb-host" startHosting
+            onClick "lb-join" (fun () -> joinRoom ((byId "lb-code")?value))
+            onClick "lb-back" closeLobby
+
+            let input = byId "lb-code"
+            input.addEventListener ("keydown", fun (e: Event) -> if (e :?> KeyboardEvent).key = "Enter" then joinRoom input?value))
+
+and private lobbyMessage (text: string) =
+    showLobby
+        (sprintf "<p>%s</p><button id=\"lb-ok\" class=\"lb-main\">OK</button>" (escapeHtml text))
+        (fun () -> onClick "lb-ok" lobbyMenu)
+
+and private startHosting () =
+    hosting <- true
+    lobbyCode <- Net.newCode ()
+    showLobby "<p>Raum wird erstellt…</p>" ignore
+    Net.host lobbyCode
+
+and private showHostCode () =
+    let link = inviteLink lobbyCode
+
+    showLobby
+        (sprintf
+            """<p>Dein Raumcode</p>
+               <div class="lb-code">%s</div>
+               <p class="lb-small">Dein Freund öffnet das Spiel, wählt ONLINE und gibt den Code ein. Oder schick ihm direkt den Link:</p>
+               <div class="lb-linkbox">%s</div>
+               <div class="lb-row"><button id="lb-copy">LINK KOPIEREN</button>%s</div>
+               <p class="lb-wait">Warte auf Mitspieler<span class="dots"></span></p>
+               <button id="lb-cancel" class="lb-link">Abbrechen</button>"""
+            lobbyCode
+            (escapeHtml link)
+            (if canShare () then "<button id=\"lb-share\">TEILEN</button>" else ""))
+        (fun () ->
+            onClick "lb-copy" (fun () ->
+                copyText link
+                (byId "lb-copy").textContent <- "KOPIERT ✓")
+            onClick "lb-share" (fun () -> share ("Komm in meinen SmashClone-Raum " + lobbyCode + "!") link)
+            onClick "lb-cancel" (fun () ->
+                Net.close ()
+                lobbyMenu ()))
+
+and private joinRoom (raw: string) =
+    let code = (string raw).Trim().ToUpperInvariant()
+
+    if code.Length <> 4 then
+        lobbyMessage "Der Raumcode hat 4 Zeichen."
+    else
+        hosting <- false
+        lobbyCode <- code
+
+        showLobby
+            (sprintf "<p>Verbinde mit Raum <b>%s</b><span class=\"dots\"></span></p><button id=\"lb-cancel\" class=\"lb-link\">Abbrechen</button>" code)
+            (fun () ->
+                onClick "lb-cancel" (fun () ->
+                    Net.close ()
+                    lobbyMenu ()))
+
+        Net.join code
+
+let private updateBadge () =
+    if online then
+        let status =
+            if desync then "⚠ asynchron"
+            elif stalledTicks > 20 then "warte auf Mitspieler…"
+            else sprintf "%.0f ms" pingMs
+
+        badge.className <- "net-badge show"
+        badge.textContent <- sprintf "ONLINE · %s · %s" (if localSlot = 0 then "P1" else "P2") status
+    else
+        badge.className <- "net-badge"
+
+let private endOnline (message: string) =
+    if online then
+        online <- false
+        Net.send (createObj [ "t" ==> "bye" ])
+        Net.close ()
+        game <- { Physics.initialGame with Screen = Title; MenuIndex = 2 }
+        updateBadge ()
+        lobbyMessage message
+
+let private startOnline () =
+    resetNet (if hosting then 0 else 1)
+    game <- onlineStart ()
+    online <- true
+    closeLobby ()
+    updateBadge ()
+
+let private setupOnline () =
+    lobby.className <- "lobby"
+    document.body.appendChild lobby |> ignore
+    badge.className <- "net-badge"
+    document.body.appendChild badge |> ignore
+
+    Net.onData <-
+        fun msg ->
+            if string msg?t = "bye" then endOnline "Dein Mitspieler hat das Online-Match verlassen."
+            else receive msg
+
+    Net.onStatus <-
+        fun status ->
+            match status with
+            | "open" -> if hosting && not online then showHostCode ()
+            | "connected" -> if not online then startOnline ()
+            | "closed" -> if online then endOnline "Die Verbindung zum Mitspieler wurde getrennt." else ()
+            | s when s.StartsWith "error:" ->
+                let kind = s.Substring 6
+
+                if online then
+                    endOnline "Die Verbindung zum Mitspieler wurde getrennt."
+                elif kind = "unavailable-id" && hosting then
+                    startHosting ()
+                elif kind = "peer-unavailable" then
+                    Net.close ()
+                    lobbyMessage (sprintf "Raum %s nicht gefunden. Stimmt der Code, und ist der Raum noch offen?" lobbyCode)
+                else
+                    Net.close ()
+                    lobbyMessage "Keine Verbindung zum Online-Dienst. Prüfe die Internetverbindung und versuch es noch einmal."
+            | _ -> ()
+
+    // Einladungslink ?raum=CODE: direkt beitreten
+    let code = roomParam ()
+
+    if code <> "" then
+        clearRoomParam ()
+        joinRoom code
+
+/// Ein fester Simulationsschritt im Online-Modus
+let private onlineTick () =
+    pollPads (game.Screen = Playing)
+    let ui = readUi ()
+    let p1 = readInput player1Keys
+    let p2 = readInput player2Keys
+
+    // Lokal dürfen beide Tastenbelegungen und alle lokalen Controller spielen
+    let localInput =
+        { Left = p1.Left || p2.Left
+          Right = p1.Right || p2.Right
+          Up = p1.Up || p2.Up
+          Down = p1.Down || p2.Down
+          Jump = p1.Jump || p2.Jump
+          Attack = p1.Attack || p2.Attack
+          Special = p1.Special || p2.Special
+          Shield = p1.Shield || p2.Shield }
+
+    let bits = encode localInput (merged ui) ui.Start ui.Escape
+    pendingEdges <- pendingEdges ||| (bits &&& ~~~heldMask)
+
+    // Zurückspulen, wenn eine Vorhersage falsch war
+    if rollbackFrom < netFrame then
+        match stateHistory.TryGetValue rollbackFrom with
+        | true, past ->
+            let mutable g = past
+
+            for f in rollbackFrom .. netFrame - 1 do
+                g <- simulate f g
+
+            game <- g
+        | _ -> desync <- true
+
+    rollbackFrom <- System.Int32.MaxValue
+
+    if netFrame - lastRemote > maxRollback then
+        // Zu weit voraus: kurz auf den Gegner warten
+        stalledTicks <- stalledTicks + 1
+    else
+        stalledTicks <- 0
+        localInputs[netFrame + inputDelay] <- (bits &&& heldMask) ||| pendingEdges
+        pendingEdges <- 0
+        game <- simulate netFrame game
+        game.Sounds |> List.iter SmashClone.Audio.play
+        netFrame <- netFrame + 1
+
+    // Eingaben senden (die letzten 8 Frames erneut, falls etwas verloren geht)
+    let newest = netFrame + inputDelay - 1
+    let first = max 0 (newest - 7)
+    let bitsOut = [| for f in first..newest -> match localInputs.TryGetValue f with | true, b -> b | _ -> 0 |]
+    Net.send (createObj [ "t" ==> "i"; "f" ==> first; "b" ==> bitsOut ])
+
+    // Prüfsumme bestätigter Frames vergleichen
+    let check = (lastRemote / 120) * 120
+
+    if check > 0 && not (localHashes.ContainsKey check) then
+        match stateHistory.TryGetValue(check + 1) with
+        | true, state when check + 1 <= netFrame ->
+            let h = checksum state
+            localHashes[check] <- h
+            Net.send (createObj [ "t" ==> "h"; "f" ==> check; "h" ==> h ])
+
+            match remoteHashes.TryGetValue check with
+            | true, r when r <> h -> desync <- true
+            | _ -> ()
+        | _ -> ()
+
+    if netFrame % 30 = 0 && stalledTicks = 0 then
+        Net.send (createObj [ "t" ==> "p"; "s" ==> now () ])
+
+    // Alte Daten aufräumen
+    let old = netFrame - maxRollback - 40
+
+    if old > 0 && old % 20 = 0 then
+        for f in old - 20 .. old do
+            stateHistory.Remove f |> ignore
+            usedRemote.Remove f |> ignore
+            localInputs.Remove f |> ignore
+            remoteInputs.Remove f |> ignore
+
+    keysPressed.Clear()
+    updateBadge ()
+
+    // Zurück im Hauptmenü: Online-Match beenden
+    if game.Screen = Title then
+        endOnline "Online-Match beendet."
+
 let rec private frame (time: float) =
     // Große Zeitsprünge (Tab im Hintergrund) kappen, damit keine "Spiral of Death" entsteht
     let delta = min 0.25 ((time - lastTime) / 1000.0)
@@ -574,10 +1012,21 @@ let rec private frame (time: float) =
 
     // Die Simulation läuft immer in exakt 1/60-Sekunden-Schritten, egal ob 60Hz oder 144Hz
     while accumulator >= fixedDeltaTime do
-        pollPads (game.Screen = Playing)
-        game <- update (readUi ()) (readInput player1Keys) (readInput player2Keys) game
-        game.Sounds |> List.iter SmashClone.Audio.play
-        keysPressed.Clear()
+        if online then
+            onlineTick ()
+        elif overlayOpen then
+            // Lobby offen: Spiel steht, Tastatur gehört den Eingabefeldern
+            keysPressed.Clear()
+        else
+            pollPads (game.Screen = Playing)
+            game <- update (readUi ()) (readInput player1Keys) (readInput player2Keys) game
+            game.Sounds |> List.iter SmashClone.Audio.play
+            keysPressed.Clear()
+
+            if game.OpenOnline then
+                game <- { game with OpenOnline = false }
+                lobbyMenu ()
+
         accumulator <- accumulator - fixedDeltaTime
 
     let scale = pixelScale ()
@@ -592,6 +1041,7 @@ let private start (time: float) =
 resizeCanvas ()
 window.addEventListener ("resize", fun _ -> resizeCanvas ())
 setupTouch ()
+setupOnline ()
 window.addEventListener ("keydown", onKeyDown)
 window.addEventListener ("keyup", onKeyUp)
 

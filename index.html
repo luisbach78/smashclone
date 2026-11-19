@@ -183,6 +183,162 @@
         }
       }
 
+      /* Online-Lobby */
+      .lobby {
+        display: none;
+      }
+
+      .lobby.open {
+        display: flex;
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        align-items: center;
+        justify-content: center;
+        background: rgba(5, 6, 18, 0.72);
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        color: #e9e6f5;
+      }
+
+      .lobby-card {
+        width: min(440px, 88vw);
+        max-height: 92vh;
+        overflow: auto;
+        padding: 22px 26px;
+        border-radius: 16px;
+        background: linear-gradient(160deg, #1c2050, #0d0f26);
+        border: 2px solid #ffd166;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        text-align: center;
+      }
+
+      .lobby-card h2 {
+        margin: 0 0 8px;
+        font: italic 900 26px "Arial Black", "Helvetica Neue", Arial, sans-serif;
+        color: #ffd166;
+        letter-spacing: 1px;
+      }
+
+      .lobby-card p {
+        margin: 8px 0;
+        font-size: 15px;
+      }
+
+      .lobby-card button {
+        font: italic 900 15px "Arial Black", "Helvetica Neue", Arial, sans-serif;
+        padding: 11px 16px;
+        border: none;
+        border-radius: 10px;
+        background: #3a4290;
+        color: #fff;
+        cursor: pointer;
+      }
+
+      .lobby-card button.lb-main {
+        width: 100%;
+        margin: 8px 0;
+        background: linear-gradient(#fff6c9, #e0961f);
+        color: #22140a;
+        font-size: 18px;
+      }
+
+      .lobby-card button.lb-link {
+        background: none;
+        color: #9fa8d8;
+        font: 14px "Helvetica Neue", Arial, sans-serif;
+        text-decoration: underline;
+        margin-top: 6px;
+      }
+
+      .lb-row {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin: 8px 0;
+      }
+
+      .lb-row input {
+        width: 120px;
+        padding: 10px;
+        border-radius: 10px;
+        border: 2px solid #5a64a8;
+        background: #0b0d22;
+        color: #fff;
+        font: 900 22px "Arial Black", monospace;
+        text-align: center;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+      }
+
+      .lb-or {
+        margin: 12px 0 2px;
+        font-size: 13px;
+        color: #9fa8d8;
+      }
+
+      .lb-code {
+        font: italic 900 56px "Arial Black", "Helvetica Neue", Arial, sans-serif;
+        letter-spacing: 10px;
+        color: #fff;
+        text-shadow: 0 0 18px rgba(255, 209, 102, 0.7);
+        margin: 4px 0 8px;
+      }
+
+      .lb-small {
+        font-size: 13px !important;
+        color: #b8c0e8;
+      }
+
+      .lb-linkbox {
+        font-size: 12px;
+        word-break: break-all;
+        padding: 8px;
+        border-radius: 8px;
+        background: #0b0d22;
+        color: #9fe8ff;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      .lb-wait {
+        color: #ffd166;
+        font-weight: bold;
+      }
+
+      .dots::after {
+        content: "";
+        animation: dots 1.4s steps(4) infinite;
+      }
+
+      @keyframes dots {
+        0% { content: ""; }
+        25% { content: "."; }
+        50% { content: ".."; }
+        75% { content: "..."; }
+      }
+
+      .net-badge {
+        display: none;
+      }
+
+      .net-badge.show {
+        display: block;
+        position: fixed;
+        top: max(6px, env(safe-area-inset-top));
+        left: max(8px, env(safe-area-inset-left));
+        z-index: 6;
+        padding: 4px 10px;
+        border-radius: 10px;
+        background: rgba(10, 12, 30, 0.75);
+        color: #9fe8ff;
+        font: bold 12px "Helvetica Neue", Arial, sans-serif;
+        pointer-events: none;
+      }
+
+      body.touch .lobby.open input {
+        font-size: 22px;
+      }
+
       /* Hochformat: Hinweis zum Drehen */
       .rotate-hint {
         display: none;

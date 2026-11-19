@@ -14,6 +14,7 @@
     <Compile Include="src/AI.fs" />
     <Compile Include="src/Physics.fs" />
     <Compile Include="src/Renderer.fs" />
+    <Compile Include="src/Net.fs" />
     <Compile Include="src/App.fs" />
   </ItemGroup>
 

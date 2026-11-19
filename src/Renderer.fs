@@ -6908,14 +6908,14 @@ let private drawTitle (ctx: Ctx) (g: Game) =
     ctx.fillText ("11 KÄMPFER  ·  5 STAGES  ·  ITEMS  ·  SMASH-BALL  ·  F#  +  FABLE", screenWidth / 2.0, 210.0)
 
     let difficultyLabel = sprintf "CPU-STÄRKE  ◀ %s ▶" (difficultyName g.Difficulty)
-    let items = [ "1P vs. CPU"; "2P LOKAL"; difficultyLabel ]
-    items |> List.iteri (fun i label -> menuRow ctx g.Frame label (screenWidth / 2.0) (282.0 + float i * 62.0) 400.0 (i = g.MenuIndex))
+    let items = [ "1P vs. CPU"; "2P LOKAL"; "ONLINE  ·  2 GERÄTE"; difficultyLabel ]
+    items |> List.iteri (fun i label -> menuRow ctx g.Frame label (screenWidth / 2.0) (262.0 + float i * 54.0) 400.0 (i = g.MenuIndex))
 
     // Pulsierender Hinweis
     ctx.globalAlpha <- 0.6 + 0.4 * sin (t * 0.1)
     ctx.font <- sprintf "italic 18px %s" displayFont
     fill ctx "#ffe27a"
-    ctx.fillText ("ENTER DRÜCKEN", screenWidth / 2.0, 470.0)
+    ctx.fillText ("ENTER DRÜCKEN", screenWidth / 2.0, 488.0)
     ctx.globalAlpha <- 1.0
 
     footerHint ctx "W / S  wählen   ·   A / D  CPU-Stärke   ·   Enter / F  bestätigen   ·   Controller:  ✕ bestätigen,  ○ zurück"

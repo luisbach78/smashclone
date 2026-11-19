@@ -613,6 +613,7 @@ let initialGame: Game =
       BallTimer = ballMinDelay
       Ultra = None
       Paused = false
+      OpenOnline = false
       ItemsOn = true
       HazardsOn = true
       Items = []
@@ -1770,8 +1771,8 @@ let private applyHit (atk: Attack) (target: Player) : Player * Effect list =
         else
             let speed = kb * knockbackToSpeed
             let baseAngle = degToRad hb.Angle
-            let lx = cos baseAngle * dir
-            let ly = -sin baseAngle
+            let lx = dcos baseAngle * dir
+            let ly = -dsin baseAngle
 
             // DI: Eingaben senkrecht zur Flugrichtung drehen den Winkel leicht
             let held = target.Prev
@@ -1779,8 +1780,8 @@ let private applyHit (atk: Attack) (target: Player) : Player * Effect list =
             let iy = axisY held
             let cross = lx * iy - ly * ix
             let turn = degToRad (diMaxDegrees * clamp -1.0 1.0 cross)
-            let vx = (lx * cos turn - ly * sin turn) * speed
-            let vyRaw = (lx * sin turn + ly * cos turn) * speed
+            let vx = (lx * dcos turn - ly * dsin turn) * speed
+            let vyRaw = (lx * dsin turn + ly * dcos turn) * speed
 
             // Geerdete Ziele prallen bei Abwärtstreffern vom Boden ab
             let vy = if target.OnGround && vyRaw > 0.0 then -vyRaw * 0.8 else vyRaw
@@ -2323,7 +2324,7 @@ let private spawnBall (seed: int) : int * SmashBall =
 let private stepBall (b: SmashBall) : SmashBall option =
     let leaving = b.Life <= 0
     let inside = b.Life < ballLife - 90
-    let wobble = sin (float b.Life * 0.045) * 1.6
+    let wobble = dsin (float b.Life * 0.045) * 1.6
     let vx =
         if leaving then b.Vel.X * 1.03
         elif inside && ((b.Pos.X < 90.0 && b.Vel.X < 0.0) || (b.Pos.X > screenWidth - 90.0 && b.Vel.X > 0.0)) then -b.Vel.X
@@ -2581,9 +2582,9 @@ let private spawnParticles (seed: int) (effect: Effect) : int * Particle list =
             particle Dust { pos with Y = pos.Y - 3.0 } vel (16 + int (c * 12.0)) (5.0 + c * 5.0) "#f2ece0")
     | SparksAt(pos, dir, count, color) ->
         emit count seed (fun a b c ->
-            let angle = atan2 dir.Y dir.X + (a - 0.5) * 2.2
+            let angle = datan2 dir.Y dir.X + (a - 0.5) * 2.2
             let speed = 4.0 + b * 11.0
-            let vel = { X = cos angle * speed; Y = sin angle * speed }
+            let vel = { X = dcos angle * speed; Y = dsin angle * speed }
             particle Spark pos vel (10 + int (c * 14.0)) (2.0 + c * 2.5) color)
     | SmokeAt(pos, color) ->
         emit 1 seed (fun a b c ->
@@ -2593,9 +2594,9 @@ let private spawnParticles (seed: int) (effect: Effect) : int * Particle list =
     | ExplosionAt(pos, dir, color) ->
         let s1, embers =
             emit 46 seed (fun a b c ->
-                let angle = atan2 dir.Y dir.X + (a - 0.5) * 1.5
+                let angle = datan2 dir.Y dir.X + (a - 0.5) * 1.5
                 let speed = 5.0 + b * 26.0
-                let vel = { X = cos angle * speed; Y = sin angle * speed }
+                let vel = { X = dcos angle * speed; Y = dsin angle * speed }
                 let tint = if c < 0.4 then "#ffffff" elif c < 0.7 then "#ffd75e" else color
                 particle Ember pos vel (28 + int (c * 34.0)) (4.0 + b * 8.0) tint)
 
@@ -2613,12 +2614,12 @@ let private spawnParticles (seed: int) (effect: Effect) : int * Particle list =
             let angle = a * Math.PI * 2.0
             let length = 34.0 + b * 60.0
             // Blitze bewegen sich nicht: Vel beschreibt Richtung und Länge
-            particle Bolt pos { X = cos angle * length; Y = sin angle * length } (6 + int (c * 5.0)) (2.0 + c * 2.0) color)
+            particle Bolt pos { X = dcos angle * length; Y = dsin angle * length } (6 + int (c * 5.0)) (2.0 + c * 2.0) color)
     | FlamesAt(pos, dir, count) ->
         emit count seed (fun a b c ->
-            let angle = atan2 dir.Y dir.X + (a - 0.5) * 2.6
+            let angle = datan2 dir.Y dir.X + (a - 0.5) * 2.6
             let speed = 1.5 + b * 7.0
-            let vel = { X = cos angle * speed; Y = sin angle * speed - 1.0 }
+            let vel = { X = dcos angle * speed; Y = dsin angle * speed - 1.0 }
             particle Flame pos vel (14 + int (c * 16.0)) (7.0 + b * 9.0) (if c < 0.5 then "#ff7a2e" else "#ffb347"))
     | LeavesAt(pos, count) ->
         emit count seed (fun a b c ->
@@ -2632,7 +2633,7 @@ let private spawnParticles (seed: int) (effect: Effect) : int * Particle list =
         emit count seed (fun a b c ->
             let angle = a * Math.PI * 2.0
             let speed = 2.0 + b * 12.0
-            particle Rainbow pos { X = cos angle * speed; Y = sin angle * speed } (24 + int (c * 24.0)) (3.0 + b * 4.0) rainbowColors[int (c * 5.99)])
+            particle Rainbow pos { X = dcos angle * speed; Y = dsin angle * speed } (24 + int (c * 24.0)) (3.0 + b * 4.0) rainbowColors[int (c * 5.99)])
     | BurstAt(pos, size) -> seed, [ particle Burst pos Vec2.zero 7 size "#ffffff" ]
     | SpeedLinesAt(pos, dir) ->
         emit 2 seed (fun a b c ->

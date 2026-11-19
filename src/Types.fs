@@ -1,6 +1,55 @@
 module SmashClone.Types
 
 // ---------------------------------------------------------------------------
+// Deterministische Mathematik
+// Math.sin, Math.cos und Math.atan2 dürfen sich je nach Browser im letzten Bit
+// unterscheiden. Für den Online-Modus müssen beide Geräte exakt gleich rechnen,
+// deshalb nutzt die Simulation eigene Versionen nur aus +, -, *, / und sqrt.
+// ---------------------------------------------------------------------------
+
+let private dPi = 3.141592653589793
+let private dHalfPi = 1.5707963267948966
+let private dTwoPi = 6.283185307179586
+
+/// Sinus über Bereichsreduktion und Taylor-Polynom bis x^15
+let dsin (x: float) =
+    let k = floor (x / dTwoPi + 0.5)
+    let r = x - k * dTwoPi
+    let r = if r > dHalfPi then dPi - r elif r < -dHalfPi then -dPi - r else r
+    let r2 = r * r
+
+    r
+    * (1.0
+       + r2
+         * (-1.0 / 6.0
+            + r2
+              * (1.0 / 120.0
+                 + r2
+                   * (-1.0 / 5040.0
+                      + r2 * (1.0 / 362880.0 + r2 * (-1.0 / 39916800.0 + r2 * (1.0 / 6227020800.0 + r2 * (-1.0 / 1307674368000.0))))))))
+
+let dcos (x: float) = dsin (x + dHalfPi)
+
+/// Arkustangens: zweimal halbieren (atan z = 2 atan(z / (1 + sqrt(1 + z²)))), dann Reihe
+let private datanSmall (z: float) =
+    let z2 = z * z
+    z * (1.0 - z2 * (1.0 / 3.0 - z2 * (1.0 / 5.0 - z2 * (1.0 / 7.0 - z2 * (1.0 / 9.0 - z2 * (1.0 / 11.0 - z2 * (1.0 / 13.0 - z2 / 15.0)))))))
+
+let datan (z: float) =
+    let h1 = z / (1.0 + sqrt (1.0 + z * z))
+    let h2 = h1 / (1.0 + sqrt (1.0 + h1 * h1))
+    4.0 * datanSmall h2
+
+let datan2 (y: float) (x: float) =
+    if x = 0.0 && y = 0.0 then 0.0
+    elif abs x >= abs y then
+        let a = datan (y / x)
+        if x > 0.0 then a elif y >= 0.0 then a + dPi else a - dPi
+    else
+        let a = datan (x / y)
+        if y > 0.0 then dHalfPi - a else -dHalfPi - a
+
+// ---------------------------------------------------------------------------
 // Grundlegende Geometrie
 // ---------------------------------------------------------------------------
 
@@ -546,6 +595,8 @@ type Game =
       Ultra: Ultra option
       /// Pause-Menü während des Kampfes
       Paused: bool
+      /// Titelmenü hat "ONLINE" gewählt (die App öffnet daraufhin die Lobby)
+      OpenOnline: bool
       ItemsOn: bool
       HazardsOn: bool
       Items: Item list
@@ -737,8 +788,8 @@ let private stagePlatforms (s: StageId) (t: int) : Platform list =
     | SkyBattlefield -> [ plat 360.0 540.0 382.0; plat 740.0 920.0 382.0; plat 550.0 730.0 264.0 ]
     | AstralAltar -> []
     | MagmaFoundry ->
-        let y1 = 392.0 + 62.0 * sin (ft * 0.012)
-        let x2 = 800.0 + 95.0 * sin (ft * 0.009 + 1.3)
+        let y1 = 392.0 + 62.0 * dsin (ft * 0.012)
+        let x2 = 800.0 + 95.0 * dsin (ft * 0.009 + 1.3)
         [ plat 385.0 545.0 y1; plat (x2 - 80.0) (x2 + 80.0) 318.0 ]
     | FrostPeak -> [ plat 250.0 400.0 412.0; plat 880.0 1030.0 412.0; plat 565.0 715.0 300.0 ]
     | NeonRooftop -> [ plat 395.0 555.0 398.0; plat 725.0 885.0 398.0 ]
