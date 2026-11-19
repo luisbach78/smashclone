@@ -1048,7 +1048,10 @@ let private onlineTick () =
     if game.Screen = Title then
         endOnline "Online-Match beendet."
 
+let mutable private lastRaf = 0.0
+
 let rec private frame (time: float) =
+    lastRaf <- now ()
     // Große Zeitsprünge (Tab im Hintergrund) kappen, damit keine "Spiral of Death" entsteht
     let delta = min 0.25 ((time - lastTime) / 1000.0)
     lastTime <- time
@@ -1088,7 +1091,8 @@ let private pageHidden () : bool = jsNative
 /// Im Hintergrund pausiert der Browser requestAnimationFrame. Im Online-Match
 /// läuft die Simulation dann per Timer weiter, damit der Gegner nicht hängt.
 let private backgroundPump () =
-    if online && pageHidden () then
+    // Auch wenn der Browser die Bildwiederholung anhält, ohne die Seite als versteckt zu melden
+    if online && (pageHidden () || now () - lastRaf > 250.0) then
         let t = now ()
         let delta = min 1.0 ((t - lastTime) / 1000.0)
         lastTime <- t
