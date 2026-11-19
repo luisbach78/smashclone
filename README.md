@@ -106,7 +106,7 @@ Die CPU sieht den Gegner mit dieser Verzögerung und hält ihre Eingaben zwische
 3. Der andere öffnet den Link oder wählt ebenfalls ONLINE und gibt den Code ein.
 4. Beide landen zusammen in der Kämpferwahl. Wer den Raum erstellt hat, ist Spieler 1.
 
-Die Geräte verbinden sich direkt per WebRTC (PeerJS), der öffentliche PeerJS-Dienst vermittelt nur den Verbindungsaufbau. Übertragen werden nur die Eingaben. Beide Geräte rechnen das Spiel bit-genau gleich (eigene deterministische Mathematik statt Math.sin/cos/atan2), fehlende Eingaben des Gegners werden vorhergesagt und bei Bedarf per Rollback korrigiert. Oben links zeigt eine Anzeige Ping und Verbindungsstatus. In sehr strengen Netzen (manche Firmen- oder Uni-WLANs) kann der direkte Verbindungsaufbau scheitern. Online funktioniert über den GitHub-Link, nicht über die lokale HTML-Datei.
+Die Geräte verbinden sich zuerst direkt per WebRTC (PeerJS). Klappt das nicht (häufig im Mobilfunk oder in strengen WLANs), läuft die Verbindung nach wenigen Sekunden automatisch über einen öffentlichen MQTT-Relay-Server (HiveMQ, EMQX oder Mosquitto). Die Anzeige oben links zeigt dann „Relay“. Übertragen werden nur die Eingaben. Beide Geräte rechnen das Spiel bit-genau gleich (eigene deterministische Mathematik statt Math.sin/cos/atan2), fehlende Eingaben des Gegners werden vorhergesagt und bei Bedarf per Rollback korrigiert. Oben links zeigt eine Anzeige Ping und Verbindungsstatus. Online funktioniert über den GitHub-Link, nicht über die lokale HTML-Datei.
 
 ### Touch (Handy und Tablet)
 
@@ -163,7 +163,7 @@ Die Dateien stehen in `SmashClone.fsproj` in Abhängigkeitsreihenfolge.
 | `src/AI.fs` | CPU mit Schwierigkeitsprofilen, Reaktionsverzögerung, Energie-Management, Smash-Ball-Jagd und Ultra-Timing |
 | `src/Physics.fs` | Movesets, Zustandsmaschine, Input-Buffer, Projektile, Reflektor, Stasis, Energie und Stale-Moves, bewegliche Plattformen, Smash-Ball, Ultra-Smash, Knockback, Partikel |
 | `src/Renderer.fs` | Cel-Shading-Renderer mit Skelett-Kämpfern, fünf Parallax-Stages, Items, Stage-Ereignisse, dynamische Kamera, VFX, Ultra-Cut-Ins, HUD, Titel, Kämpferwahl, Stage-Wahl, Siegerbildschirm |
-| `src/Net.fs` | WebRTC-Verbindung über PeerJS: Raum erstellen, beitreten, Nachrichten senden |
+| `src/Net.fs` | Online-Verbindung: direkt per WebRTC (PeerJS), sonst über MQTT-Relay; Raum erstellen, beitreten, Nachrichten senden |
 | `src/App.fs` | Input, Menü-Ablauf und Main-Loop |
 
 Die Simulation ist eine reine Funktion `Physics.step : Input list -> Game -> Game` und läuft über einen Akkumulator immer in Schritten von 1/60 Sekunde. Bildwiederholraten von 60 Hz und 144 Hz ergeben dadurch identische Physik und Frame-Data. Auch der Zufall (Partikel, KI) steckt als Seed im Game-State.

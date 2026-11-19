@@ -579,7 +579,7 @@ let mutable private accumulator = 0.0
 // ---------------------------------------------------------------------------
 
 let private inputDelay = 2
-let private maxRollback = 12
+let private maxRollback = 20
 
 let private bit (b: bool) (i: int) = if b then 1 <<< i else 0
 let private has (bits: int) (i: int) = bits &&& (1 <<< i) <> 0
@@ -738,6 +738,7 @@ let private simulate (f: int) (g: Game) =
 let mutable private overlayOpen = false
 let mutable private lobbyCode = ""
 let mutable private hosting = false
+let mutable private codeShown = false
 
 let private lobby = document.createElement "div"
 let private badge = document.createElement "div"
@@ -808,6 +809,7 @@ and private lobbyMessage (text: string) =
 
 and private startHosting () =
     hosting <- true
+    codeShown <- false
     lobbyCode <- Net.newCode ()
     showLobby "<p>Raum wird erstellt…</p>" ignore
     Net.host lobbyCode
@@ -846,7 +848,7 @@ and private joinRoom (raw: string) =
         lobbyCode <- code
 
         showLobby
-            (sprintf "<p>Verbinde mit Raum <b>%s</b><span class=\"dots\"></span></p><button id=\"lb-cancel\" class=\"lb-link\">Abbrechen</button>" code)
+            (sprintf "<p>Verbinde mit Raum <b>%s</b><span class=\"dots\"></span></p><p id=\"lb-status\" class=\"lb-small\">Suche direkte Verbindung…</p><button id=\"lb-cancel\" class=\"lb-link\">Abbrechen</button>" code)
             (fun () ->
                 onClick "lb-cancel" (fun () ->
                     Net.close ()
@@ -862,7 +864,8 @@ let private updateBadge () =
             else sprintf "%.0f ms" pingMs
 
         badge.className <- "net-badge show"
-        badge.textContent <- sprintf "ONLINE · %s · %s" (if localSlot = 0 then "P1" else "P2") status
+        let via = if Net.currentTransport () = Net.Relay then " · Relay" else ""
+        badge.textContent <- sprintf "ONLINE%s · %s · %s" via (if localSlot = 0 then "P1" else "P2") status
     else
         badge.className <- "net-badge"
 
@@ -897,7 +900,16 @@ let private setupOnline () =
     Net.onStatus <-
         fun status ->
             match status with
-            | "open" -> if hosting && not online then showHostCode ()
+            | "open" ->
+                if hosting && not online && not codeShown then
+                    codeShown <- true
+                    showHostCode ()
+            | "trying-relay" ->
+                if not online && not hosting then
+                    let info = byId "lb-status"
+
+                    if not (isNull info) then
+                        info.textContent <- "Direkte Verbindung klappt nicht, verbinde über Relay-Server…"
             | "connected" -> if not online then startOnline ()
             | "closed" -> if online then endOnline "Die Verbindung zum Mitspieler wurde getrennt." else ()
             | s when s.StartsWith "error:" ->
@@ -912,7 +924,7 @@ let private setupOnline () =
                     lobbyMessage (sprintf "Raum %s nicht gefunden. Stimmt der Code, und ist der Raum noch offen?" lobbyCode)
                 else
                     Net.close ()
-                    lobbyMessage "Keine Verbindung zum Online-Dienst. Prüfe die Internetverbindung und versuch es noch einmal."
+                    lobbyMessage (sprintf "Keine Verbindung zum Online-Dienst (%s). Prüfe die Internetverbindung und versuch es noch einmal." kind)
             | _ -> ()
 
     // Herzschlag unabhängig von der Bildrate: erkennt abgerissene Verbindungen
@@ -985,7 +997,9 @@ let private onlineTick () =
     let newest = netFrame + inputDelay - 1
     let first = max 0 (newest - 7)
     let bitsOut = [| for f in first..newest -> match localInputs.TryGetValue f with | true, b -> b | _ -> 0 |]
-    Net.send (createObj [ "t" ==> "i"; "f" ==> first; "b" ==> bitsOut ])
+    // Über das Relay nur jeden zweiten Frame senden (die Wiederholung deckt die Lücke ab)
+    if Net.currentTransport () <> Net.Relay || netFrame % 2 = 0 then
+        Net.send (createObj [ "t" ==> "i"; "f" ==> first; "b" ==> bitsOut ])
 
     // Prüfsumme bestätigter Frames vergleichen
     let check = (lastRemote / 120) * 120
