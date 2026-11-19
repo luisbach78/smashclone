@@ -828,6 +828,7 @@ and private showHostCode () =
                <div class="lb-linkbox">%s</div>
                <div class="lb-row"><button id="lb-copy">LINK KOPIEREN</button>%s</div>
                <p class="lb-wait">Warte auf Mitspieler<span class="dots"></span></p>
+               <p class="lb-small">Wichtig. Komm nach dem Verschicken direkt hierher zurück und lass diese Seite offen, bis dein Freund drin ist.</p>
                <button id="lb-cancel" class="lb-link">Abbrechen</button>"""
             lobbyCode
             (escapeHtml link)
@@ -913,6 +914,12 @@ let private setupOnline () =
 
                     if not (isNull info) then
                         info.textContent <- "Direkte Verbindung klappt nicht, verbinde über Relay-Server…"
+            | "waiting-host" ->
+                if not online && not hosting then
+                    let info = byId "lb-status"
+
+                    if not (isNull info) then
+                        info.textContent <- "Der Gastgeber antwortet noch nicht. Er muss das Spiel mit dem Raumcode offen und im Vordergrund haben. Ich versuche es weiter…"
             | "connected" -> if not online then startOnline ()
             | "closed" -> if online then endOnline "Die Verbindung zum Mitspieler wurde getrennt." else ()
             | s when s.StartsWith "error:" ->
@@ -1075,6 +1082,22 @@ let private start (time: float) =
     lastTime <- time
     window.requestAnimationFrame frame |> ignore
 
+[<Emit("document.hidden")>]
+let private pageHidden () : bool = jsNative
+
+/// Im Hintergrund pausiert der Browser requestAnimationFrame. Im Online-Match
+/// läuft die Simulation dann per Timer weiter, damit der Gegner nicht hängt.
+let private backgroundPump () =
+    if online && pageHidden () then
+        let t = now ()
+        let delta = min 1.0 ((t - lastTime) / 1000.0)
+        lastTime <- t
+        accumulator <- accumulator + delta
+
+        while accumulator >= fixedDeltaTime do
+            onlineTick ()
+            accumulator <- accumulator - fixedDeltaTime
+
 resizeCanvas ()
 window.addEventListener ("resize", fun _ -> resizeCanvas ())
 setupTouch ()
@@ -1088,6 +1111,16 @@ window.addEventListener (
         keysDown.Clear()
         keysPressed.Clear()
         padDown.Clear()
+)
+
+window.setInterval ((fun () -> backgroundPump ()), 100) |> ignore
+
+document.addEventListener (
+    "visibilitychange",
+    fun _ ->
+        if not (pageHidden ()) then
+            lastTime <- now ()
+            Net.wake ()
 )
 
 window.requestAnimationFrame start |> ignore

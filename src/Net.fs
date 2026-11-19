@@ -111,9 +111,13 @@ let private later (ms: int) (f: unit -> unit) =
     let id = setTimeout f ms
     timers <- id :: timers
 
+let mutable private intervals: int list = []
+
 let private clearTimers () =
     timers |> List.iter clearTimeout
     timers <- []
+    intervals |> List.iter clearInterval
+    intervals <- []
 
 let private endClient (c: obj) =
     try
@@ -282,9 +286,17 @@ let private joinRelay (code: string) (mySession: int) =
                         publishOn c (topics + "/h") (createObj [ "t" ==> "hello" ]))
             700
 
-    later 16000 (fun () -> clearInterval knock)
+    intervals <- knock :: intervals
 
-    later 15000 (fun () ->
+    // Der Gastgeber hat die Seite vielleicht gerade im Hintergrund (z. B. um den
+    // Link per WhatsApp zu schicken). Darum lange weiter anklopfen.
+    later 8000 (fun () ->
+        if session = mySession && transport = NoTransport then
+            onStatus "waiting-host")
+
+    later 91000 (fun () -> clearInterval knock)
+
+    later 90000 (fun () ->
         if session = mySession && transport = NoTransport then
             onStatus "error:peer-unavailable")
 
@@ -362,6 +374,20 @@ let join (code: string) =
             startRelay ()
 
         later 5000 startRelay
+
+/// Seite ist wieder im Vordergrund: abgerissene Wege neu aufbauen
+let wake () =
+    if transport = NoTransport && not (isNull peer) then
+        try
+            if (peer?disconnected: bool) && not (peer?destroyed: bool) then peer?reconnect ()
+        with _ ->
+            ()
+
+    for c in relayClients do
+        try
+            if not (c?connected: bool) then c?reconnect () |> ignore
+        with _ ->
+            ()
 
 let send (msg: obj) =
     match transport with
