@@ -171,6 +171,18 @@
         opacity: 0.7;
       }
 
+      /* Kleine Handys im Querformat: Knöpfe etwas kleiner */
+      @media (max-height: 430px) {
+        .touch-buttons {
+          transform: scale(0.78);
+          transform-origin: bottom right;
+        }
+
+        .touch-stick {
+          transform: scale(0.85);
+        }
+      }
+
       /* Hochformat: Hinweis zum Drehen */
       .rotate-hint {
         display: none;

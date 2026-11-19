@@ -141,6 +141,8 @@ let private padKeys (inMatch: bool) (m: KeyMap) (pad: obj) : string list =
 // ---------------------------------------------------------------------------
 
 let private touchHeld = HashSet<string>()
+/// Kurze Tipper, die zwischen zwei Frames schon wieder losgelassen wurden, zählen trotzdem einmal
+let private touchTapped = HashSet<string>()
 let private stickRadius = 46.0
 let private stickDead = 16.0
 
@@ -232,6 +234,7 @@ let private setupTouch () =
                     b?setPointerCapture (e?pointerId) |> ignore
                     b.classList.add "down"
                     touchHeld.Add action |> ignore
+                    touchTapped.Add action |> ignore
             )
 
             let up (_: Event) =
@@ -252,7 +255,14 @@ let private setupTouch () =
         document.addEventListener ("contextmenu", fun (e: Event) -> e.preventDefault ())
 
 let private touchKeys (inMatch: bool) (m: KeyMap) : string list =
-    [ for t in touchHeld do
+    let active = HashSet<string>(touchHeld)
+
+    for t in touchTapped do
+        active.Add t |> ignore
+
+    touchTapped.Clear()
+
+    [ for t in active do
           match t with
           | "left" -> m.KLeft
           | "right" -> m.KRight
