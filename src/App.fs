@@ -131,8 +131,8 @@ let private padKeys (inMatch: bool) (m: KeyMap) (pad: obj) : string list =
           if b 12 || y < -stickThreshold then m.KUp
           if b 0 || b 2 then m.KAttack
           if b 1 then m.KShield
-          if b 8 then "Escape"
 
+      if b 8 then "Escape"
       if b 9 then "Enter" ]
 
 // ---------------------------------------------------------------------------
@@ -533,8 +533,13 @@ let update (ui: UiInput) (p1: Input) (p2: Input) (game: Game) : Game =
     | StageSelect -> Physics.step idle g |> updateStageSelect ui
     | GameOver -> Physics.step idle g |> updateGameOver ui
     | Playing ->
-        if ui.Escape then
-            toTitle g
+        // START pausiert, MENÜ/Esc während der Pause beendet den Kampf
+        if g.Paused then
+            if ui.Start then { g with Paused = false } |> withSound SfxMenuSelect
+            elif ui.Escape then toTitle { g with Paused = false }
+            else { g with Frame = g.Frame + 1; Sounds = [] }
+        elif (ui.Start || ui.Escape) && g.Countdown <= 0 && g.Ultra.IsNone then
+            { g with Paused = true } |> withSound SfxMenuBack
         else
             match g.Mode, g.Players with
             | VsCpu, [ human; cpu ] ->

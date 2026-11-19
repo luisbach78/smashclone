@@ -544,6 +544,8 @@ type Game =
       Ball: SmashBall option
       BallTimer: int
       Ultra: Ultra option
+      /// Pause-Menü während des Kampfes
+      Paused: bool
       ItemsOn: bool
       HazardsOn: bool
       Items: Item list

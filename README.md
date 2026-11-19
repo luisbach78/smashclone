@@ -99,10 +99,6 @@ Die CPU sieht den Gegner mit dieser Verzögerung und hält ihre Eingaben zwische
 | Schild (+ Richtung Rolle, in der Luft Air-Dodge) | H | Ö |
 | Griff (danach Richtung = Wurf) | H + F | Ö + K |
 
-### Touch (Handy und Tablet)
-
-Links unten ist ein virtueller Stick (erscheint dort, wo der Daumen aufsetzt), rechts liegen die Knöpfe A (Angriff), B (Smash und Specials), ▲ (Sprung) und S (Schild, zusammen mit A = Griff). Oben in der Mitte sind START und MENÜ. Im Menü bestätigt A und S geht zurück. Gespielt wird im Querformat, am besten über „Zum Home-Bildschirm“ im Vollbild.
-
 ### Controller (PS4, PS5, Xbox, Switch Pro)
 
 Ein per Bluetooth oder USB verbundener Controller funktioniert direkt im Browser (Chrome, Safari, Edge oder Firefox). Controller 1 steuert Spieler 1, ein zweiter Controller Spieler 2. Tastatur und Controller lassen sich mischen, zum Beispiel Spieler 1 am Controller und Spieler 2 an den Pfeiltasten.

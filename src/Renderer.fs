@@ -7799,5 +7799,25 @@ let draw (ctx: Ctx) (g: Game) =
     | Title -> drawTitle ctx g
     | CharSelect -> drawCharSelect ctx g
     | StageSelect -> drawStageSelect ctx g
-    | Playing -> drawArena ctx g
+    | Playing ->
+        drawArena ctx g
+
+        if g.Paused then
+            fill ctx "rgba(5,6,18,0.62)"
+            ctx.fillRect (0.0, 0.0, screenWidth, screenHeight)
+            ctx.save ()
+            ctx.translate (screenWidth / 2.0, 300.0)
+            ctx.transform (1.0, 0.0, -0.2, 1.0, 0.0, 0.0)
+            fill ctx "rgba(5,6,15,0.9)"
+            ctx.fillRect (-260.0, -60.0, 520.0, 120.0)
+            fill ctx "#ffd166"
+            ctx.fillRect (-260.0, 54.0, 520.0, 6.0)
+            ctx.restore ()
+            ctx.font <- sprintf "italic 64px %s" displayFont
+            ctx.textAlign <- "center"
+            ctx.textBaseline <- "middle"
+            outlinedText ctx "PAUSE" (screenWidth / 2.0) 296.0 "#ffffff" 8.0
+            ctx.font <- "16px 'Helvetica Neue', Arial, sans-serif"
+            fill ctx "#e9e6f5"
+            ctx.fillText ("START / Enter / OPTIONS: weiter    ·    MENÜ / Esc / SHARE: Kampf beenden", screenWidth / 2.0, 400.0)
     | GameOver -> drawGameOver ctx g
