@@ -1119,6 +1119,29 @@ window.addEventListener (
 
 window.setInterval ((fun () -> backgroundPump ()), 100) |> ignore
 
+[<Emit("window.addEventListener($0, $1, { capture: true })")>]
+let private addCaptureListener (_evt: string) (_f: unit -> unit) : unit = jsNative
+
+// Ton freischalten: Browser erlauben Audio nur nach einer echten Nutzergeste.
+// Bei Touch zählt erst das Loslassen (pointerup/touchend), nicht das Antippen,
+// und Controller-Knöpfe zählen gar nicht. Darum auf allen Gesten lauschen.
+for evt in [ "pointerup"; "touchend"; "click"; "mousedown"; "keydown" ] do
+    addCaptureListener evt (fun () -> SmashClone.Audio.unlock ())
+
+// Hinweis, solange der Ton noch gesperrt ist (z. B. nur mit Controller gespielt)
+let private soundHint = document.createElement "button"
+soundHint.className <- "sound-hint"
+soundHint.textContent <- "🔇 Für Ton einmal tippen oder klicken"
+soundHint.addEventListener ("click", fun _ -> SmashClone.Audio.unlock ())
+document.body.appendChild soundHint |> ignore
+window.setInterval (
+    (fun () ->
+        let running = SmashClone.Audio.isRunning ()
+        soundHint.className <- if running then "sound-hint" else "sound-hint show"),
+    500
+)
+|> ignore
+
 document.addEventListener (
     "visibilitychange",
     fun _ ->

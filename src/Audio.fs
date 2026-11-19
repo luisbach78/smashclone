@@ -64,9 +64,24 @@ let mutable private master: GainNode option = None
 let mutable private noiseBuffer: AudioBuffer option = None
 
 /// Muss aus einer Nutzergeste heraus aufgerufen werden (Autoplay-Richtlinien der Browser)
-let unlock () =
+let rec unlock () =
     match context with
-    | Some ctx -> if ctx.state = "suspended" then ctx.resume ()
+    | Some ctx ->
+        // "suspended" (Autoplay-Sperre) oder "interrupted" (iOS nach Anruf/Hintergrund)
+        if ctx.state <> "running" then
+            try
+                ctx.resume ()
+            with _ ->
+                ()
+
+            // iOS schaltet Web Audio erst frei, wenn in der Geste wirklich etwas abgespielt wird
+            try
+                let src = ctx.createBufferSource ()
+                src.buffer <- ctx.createBuffer (1, 1, ctx.sampleRate)
+                src.connect ctx.destination
+                src.start 0.0
+            with _ ->
+                ()
     | None ->
         match createContext () with
         | Some ctx ->
@@ -83,7 +98,14 @@ let unlock () =
             context <- Some ctx
             master <- Some gain
             noiseBuffer <- Some buffer
+            unlock ()
         | None -> ()
+
+/// Läuft der Ton gerade? (Sonst wartet der Browser noch auf einen Klick oder Tipper)
+let isRunning () =
+    match context with
+    | Some ctx -> ctx.state = "running"
+    | None -> false
 
 /// Oszillator mit Tonhöhen-Sweep und perkussiver Hüllkurve
 let private tone (wave: string) (freqFrom: float) (freqTo: float) (duration: float) (volume: float) (delay: float) =
