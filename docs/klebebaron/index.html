@@ -115,6 +115,7 @@ button:focus-visible{outline:3px solid #fff;outline-offset:2px}
  <div class="or">oder einem Raum beitreten</div>
  <div class="join"><input id="jcode" maxlength="4" placeholder="CODE" autocomplete="off" aria-label="Raum-Code"><button class="buy alt" id="bjoin">Beitreten</button></div>
  <div id="lstat"></div>
+ <button class="x" id="breset" style="margin-top:14px;width:100%;color:var(--soft)">Spielstand löschen und neu anfangen</button>
 </div></div>
 <div class="over" id="win" hidden><div class="card"><h2>Der Mond klebt fest.</h2><p id="wtext"></p><button class="buy" id="wgo">Weiterkleben</button></div></div>
 <div class="over" id="lost" hidden><div class="card"><h2>Verbindung weg</h2><p>Die Verbindung zum Raum ist abgerissen. Lad die Seite neu und tritt dem Raum nochmal bei.</p><button class="buy" id="reload">Neu laden</button></div></div>
@@ -189,7 +190,7 @@ function loadSave(){try{let s=JSON.parse(localStorage.getItem(KEY)||'null');
 loadSave();
 let NET=null,myId='h',conn=null,peer=null,roomCode='',evq=[];
 const isHost=()=>NET!=='guest';
-const save=()=>{if(!isHost())return;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+let wiping=false;const save=()=>{if(!isHost()||wiping)return;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const nf=(n,d)=>n.toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 function big(n,d){for(const[v,s]of[[1e15,'Brd.'],[1e12,'Bio.'],[1e9,'Mrd.'],[1e6,'Mio.']])if(n>=v)return nf(n/v,2)+' '+s;return nf(n,d)}
 const eur=n=>(n<1000?big(n,n<10?2:1):big(n,0))+' €';
@@ -784,6 +785,9 @@ const setMute=()=>$('mute').textContent=S.muted?'Ton aus':'Ton an';
 $('mute').addEventListener('click',e=>{S.muted=!S.muted;setMute();audio();e.target.blur();if(isHost())save()});
 function startGame(){if(isHost()){for(let i=builtN;i<S.built;i++)buildPad(i,false);syncSide()}started=true;$('lobby').hidden=true}
 $('bsolo').addEventListener('click',()=>{audio();startGame()});
+let rArm=false;$('breset').addEventListener('click',e=>{if(!rArm){rArm=true;e.target.textContent='Wirklich alles löschen? Nochmal klicken';e.target.style.color='var(--red)';setTimeout(()=>{rArm=false;e.target.textContent='Spielstand löschen und neu anfangen';e.target.style.color='var(--soft)'},4000);return}
+ wiping=true;try{localStorage.removeItem(KEY);localStorage.removeItem('klebebaron-v2');localStorage.removeItem('klebebaron-v1')}catch(x){}location.reload()});
+$('breset').hidden=!(S.built||S.money>1||S.strips||S.helpers.length);
 $('bhost').addEventListener('click',()=>{audio();hostRoom()});
 $('bjoin').addEventListener('click',()=>{audio();joinRoom()});
 $('jcode').addEventListener('keydown',e=>{if(e.key==='Enter')joinRoom()});
