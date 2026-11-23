@@ -122,9 +122,9 @@ const TYPES=[
  {n:'Doppelseitig',mult:15,tol:.45,tear:.75,jam:2.8,cost:150000,col:0xf3eee4,col2:0xd23a2a,op:1,vis:.3,outer:0xd23a2a},
  {n:'Mond-Tape',mult:50,tol:.32,tear:.6,jam:3.6,cost:3e6,col:0x2a3558,col2:0xc9d4ff,op:1,vis:.22}];
 const ST={
- abroll:{n:'Abroll-Station',time:4,val:10,cm:200,inCap:8,outCap:10},
- band:{n:'Förderband',time:2.4,val:45,cm:1500,inCap:12,outCap:14},
- robo:{n:'Roboter-Werk',time:1.4,val:220,cm:20000,inCap:16,outCap:18}};
+ abroll:{n:'Abroll-Station',time:3.5,val:16,cm:200,inCap:8,outCap:10},
+ band:{n:'Förderband',time:2.2,val:80,cm:1500,inCap:12,outCap:14},
+ robo:{n:'Roboter-Werk',time:1.3,val:420,cm:20000,inCap:16,outCap:18}};
 const HP=[7.5,5.2];
 const PADS=[
  {k:'st',t:'abroll',x:-4,z:-1,cost:20},{k:'st',t:'abroll',x:0,z:-1,cost:80},{k:'helper',x:HP[0],z:HP[1],cost:200},
@@ -457,7 +457,7 @@ function zoneStep(pl){
 function sellBox(v,quiet,who){const d=Object.values(ST).find(q=>q.val===v)||ST.abroll;const val=v*T().mult*rushM();S.money+=val;S.total+=d.cm;
  if(!quiet){emit({t:'sfx',k:'coin',to:who});emit({t:'coin',x:SELL.x,y:1.2,z:SELL.z,n:2});emit({t:'fl',m:'+'+eur(val),x:SELL.x,y:2.2,z:SELL.z})}else emit({t:'coin',x:SELL.x,y:1.2,z:SELL.z,n:1})}
 function padStep(pl,dt){if(S.built>=PADS.length)return;const p=PADS[S.built];
- if(pl.mode==='walk'&&Math.abs(pl.x-p.x)<1.1&&Math.abs(pl.z-p.z)<1.1&&S.money>0){const rate=Math.max(15,p.cost*.7);const a=Math.min(S.money,rate*dt,p.cost-padPaid);S.money-=a;padPaid+=a;if(Math.random()<dt*14)emit({t:'sfx',k:'pay',to:pl.id});
+ if(pl.mode==='walk'&&pl.dwell>.4&&Math.abs(pl.x-p.x)<1.1&&Math.abs(pl.z-p.z)<1.1&&S.money>0){const rate=Math.max(15,p.cost*.6);const a=Math.min(S.money,rate*dt,p.cost-padPaid);S.money-=a;padPaid+=a;if(Math.random()<dt*14)emit({t:'sfx',k:'pay',to:pl.id});
   if(padPaid>=p.cost-1e-6){padPaid=0;S.built++;buildPad(S.built-1,true);emit({t:'sfx',k:'build'});emit({t:'coin',x:p.x,y:1,z:p.z,n:12});
    emit({t:'toast',m:p.k==='helper'?'Neuer Praktikant! Er schleppt jetzt selbst Rollen und Pakete':p.k==='st'?ST[p.t].n+' gebaut! Blau ist Rollen rein, grün sind Pakete raus':'Die Mond-Schleuder steht!'});
    if(p.k==='moon'){S.won=true;emit({t:'win'})}save();
@@ -465,7 +465,7 @@ function padStep(pl,dt){if(S.built>=PADS.length)return;const p=PADS[S.built];
 function simulate(dt){S.played+=dt;if(rushT>0)rushT=Math.max(0,rushT-dt);
  const iv=.9/(1+.6*S.up.supply),mx=16+8*S.up.supply;for(const d of docks){d.t+=dt;if(d.t>=iv){d.t=0;if(d.n<mx)d.n++}}
  catStep(dt);
- for(const pl of Object.values(players)){if(!pl.active)continue;pl.act-=dt;if(pl.act<=0&&pl.mode==='walk'){pl.act=.09;zoneStep(pl)}padStep(pl,dt);sideStep(pl,dt)}
+ for(const pl of Object.values(players)){if(!pl.active)continue;const onP=[PADS[S.built]].concat(SIDE.filter(q=>!q.done()&&q.req())).some(p=>p&&Math.abs(pl.x-p.x)<1.1&&Math.abs(pl.z-p.z)<1.1);pl.dwell=onP&&pl.spd<.7?(pl.dwell||0)+dt:0;pl.act-=dt;if(pl.act<=0&&pl.mode==='walk'){pl.act=.09;zoneStep(pl)}padStep(pl,dt);sideStep(pl,dt)}
  const sm=1.35**S.up.shift;jamAcc+=dt;const jtick=jamAcc>=1;if(jtick)jamAcc=0;
  for(const s of stations){const work=s.inn>0&&s.out<s.d.outCap;
   if(s.jam){if(jtick){s.jam.t++;if(s.jam.t>=TECH[S.up.tech])s.jam=null}}
@@ -513,7 +513,7 @@ function makeCat(kind){const[x,z]=kind==='r'?[-8,-3.2]:[8,-3.2];const g=new THRE
  const lbl=label(280,96,.75);lbl.position.set(x,2.5,z);scene.add(lbl);drawLabel(lbl,[kind==='r'?'ROLLEN-KATAPULT':'PAKET-KATAPULT',kind==='r'?'schießt Rollen in Maschinen':'schießt Pakete zum Versand'],'#7fb6ff');
  addOb(x,z,1.5,1.5);cats[kind]={g,arm,lbl,t:0,kick:0};}
 function syncSide(){while(docks.length<1+S.docks)createDock(docks.length);if(S.cat.r&&!cats.r)makeCat('r');if(S.cat.b&&!cats.b)makeCat('b')}
-function sideStep(pl,dt){if(pl.mode!=='walk')return;for(const q of SIDE){if(q.done()||!q.req())continue;if(Math.abs(pl.x-q.x)<1.1&&Math.abs(pl.z-q.z)<1.1&&S.money>0){
+function sideStep(pl,dt){if(pl.mode!=='walk')return;for(const q of SIDE){if(q.done()||!q.req())continue;if(pl.dwell>.4&&Math.abs(pl.x-q.x)<1.1&&Math.abs(pl.z-q.z)<1.1&&S.money>0){
   const a=Math.min(S.money,Math.max(15,q.cost*.7)*dt,q.cost-q.paid);S.money-=a;q.paid+=a;if(Math.random()<dt*14)emit({t:'sfx',k:'pay',to:pl.id});
   if(q.paid>=q.cost-1e-6){q.paid=0;if(q.k==='dock')S.docks++;if(q.k==='catR')S.cat.r=1;if(q.k==='catB')S.cat.b=1;syncSide();emit({t:'sfx',k:'build'});emit({t:'coin',x:q.x,y:1,z:q.z,n:12});
    emit({t:'toast',m:q.k==='dock'?q.n+' liefert jetzt auch Rollen!':q.k==='catR'?'Rollen-Katapult gebaut! Es schießt Rollen von der Anlieferung in die Maschinen':'Paket-Katapult gebaut! Es schießt fertige Pakete zum Versand'});
@@ -649,7 +649,7 @@ function ui(){$('money').textContent=eur(S.money);$('carry').textContent=me.carr
   else if(inZ(me,SHOP))t='<kbd>E</kbd> Werkzeugschrank öffnen';
   else if(docks.some(d=>inZ(me,d)))t=docks.find(d=>inZ(me,d)).n?(me.kind==='box'?'Erst die Pakete loswerden':me.carry>=cap()?'Rucksack voll':'Rollen aufladen …'):'Warte auf Nachschub …';
   else if(inZ(me,SELL))t=me.kind==='box'?'Pakete werden verkauft …':'Hier Pakete abgeben';
-  else{const p=PADS[S.built];if((p&&Math.abs(me.x-p.x)<1.1&&Math.abs(me.z-p.z)<1.1)||SIDE.some(q=>q.vis&&Math.abs(me.x-q.x)<1.1&&Math.abs(me.z-q.z)<1.1))t=S.money>0?'Bezahlen … stehen bleiben':'Kein Geld! Erst was verdienen';
+  else{const p=PADS[S.built];if((p&&Math.abs(me.x-p.x)<1.1&&Math.abs(me.z-p.z)<1.1)||SIDE.some(q=>q.vis&&Math.abs(me.x-q.x)<1.1&&Math.abs(me.z-q.z)<1.1))t=S.money>0?(me.spd>.7?'Stehen bleiben zum Bezahlen':'Bezahlen … stehen bleiben'):'Kein Geld! Erst was verdienen';
    for(const s of stations){if(inZ(me,s.inZ))t=me.kind==='roll'?(s.inn<s.d.inCap?'Rollen einlegen …':'Maschine ist voll'):'Hier kommen Rollen rein';if(inZ(me,s.outZ))t=me.kind==='roll'?'Erst Rollen loswerden, dann Pakete nehmen':s.out?'Pakete aufladen …':'Noch keine Pakete fertig'}}}
  if(!t&&S.strips===0&&S.built===0)t=me.kind==='roll'?'Bring die Rollen zu einer gelben Werkbank vorne':'Lauf zur blauen Anlieferung links und hol Rollen';
  pr.hidden=!t;pr.innerHTML=t;pr.classList.toggle('bad',bad)}
