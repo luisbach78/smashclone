@@ -24,6 +24,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14110e;color:var(--in
 .chip b{font:400 clamp(20px,2.6vw,28px)/1.05 "Lilita One","Arial Black",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
 .chip.inc{border-color:var(--green)}.chip.inc b{color:var(--green)}
 .chip.rush{border-color:#fff;background:#a87b00}
+.chip.ord{border-color:#ff9a3d;min-width:210px}.chip.ord b{color:#ffb86b}.chip.ord .bar div{background:#ff9a3d}
+#buildhud{position:fixed;top:90px;left:14px;max-width:560px;background:var(--pan);border-left:5px solid #7fb6ff;border-radius:10px;padding:10px 14px;font-weight:700}
+#buildhud[hidden]{display:none}#buildhud small{display:block;color:var(--soft);font-weight:500;margin-top:4px}
+.side .x{background:var(--pan)}#bbuild.on{background:#7fb6ff;color:#111;border-color:#7fb6ff}
 .chip.room{border-color:var(--blue)}.chip.room.ok{border-color:var(--green)}
 .goal{margin-left:auto;min-width:240px}
 .bar{height:12px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:6px}
@@ -96,13 +100,15 @@ button:focus-visible{outline:3px solid #fff;outline-offset:2px}
  <div class="chip inc"><span>Fabrik bringt</span><b id="ips">0 €/s</b></div>
  <div class="chip"><span>Auf dem Rücken</span><b id="carry">0 / 5</b></div>
  <div class="chip room" id="room" hidden><span id="roomt">Raum</span><b id="roomc"></b></div>
+ <div class="chip ord" id="ord" hidden><span id="ordt">Express-Auftrag</span><b id="ordb"></b><div class="bar"><div id="ordbar" style="width:0"></div></div></div>
  <div class="chip rush" id="rush" hidden><span>Goldrolle</span><b id="rusht"></b></div>
  <div class="chip goal"><span id="gtext">Ziel · Mond-Schleuder bauen</span><div class="bar"><div id="gbar" style="width:0"></div></div></div>
 </div>
 <div id="benchhud" hidden></div>
 <div id="prompt" hidden></div>
-<div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> laufen · <kbd>Shift</kbd> rennen · <kbd>Leertaste</kbd> springen · <kbd>E</kbd> benutzen</div>
-<div class="side"><button class="x" id="mute">Ton an</button></div>
+<div class="keys"><kbd>WASD</kbd> laufen · <kbd>Shift</kbd> rennen · <kbd>E</kbd> benutzen · <kbd>Q</kbd> Rollen ablegen · <kbd>B</kbd> Bänder bauen</div>
+<div id="buildhud" hidden></div>
+<div class="side"><button class="x" id="bbuild">Bänder bauen (B)</button><button class="x" id="mute">Ton an</button></div>
 <div id="toasts"></div>
 <div class="over" id="menu" hidden><div class="menu"><div class="mh"><h2>Werkzeugschrank</h2><span id="mcash"></span><button class="x" id="mclose">Zu (E)</button></div>
  <div class="mtabs" id="mtabs"><button data-tab="fabrik" class="on">Fabrik</button><button data-tab="personal">Personal</button><button data-tab="logistik">Logistik</button><button data-tab="band">Bandsorte</button><button data-tab="werkbank">Werkbank &amp; Baron</button></div>
@@ -160,9 +166,12 @@ const UPG={
  hcap:{tab:'personal',n:'Praktikanten-Rucksack',d:'Jeder Praktikant trägt zwei Sachen mehr.',cost:l=>150*3**l,max:8},
  hspd:{tab:'personal',n:'Praktikanten-Kaffee',d:'Alle Praktikanten laufen 15 % schneller pro Stufe.',cost:l=>200*3**l,max:6},
  /* Logistik */
- supply:{tab:'logistik',n:'Lieferant',d:'Alle Rollen-Express liefern schneller und stapeln mehr.',cost:l=>40*3**l,max:8},
+ supply:{tab:'logistik',n:'Lieferant',d:'Alle Rollen-Express liefern schneller und stapeln mehr.',cost:l=>40*2.8**l,max:10},
  cat:{tab:'logistik',n:'Katapult-Tempo',d:'Beide Katapulte schießen öfter.',cost:l=>800*4**l,max:6},
- catn:{tab:'logistik',n:'Katapult-Ladung',d:'Pro Schuss fliegt eine Rolle bzw. ein Paket mehr.',cost:l=>5000*12**l,max:3}};
+ catn:{tab:'logistik',n:'Katapult-Ladung',d:'Pro Schuss fliegt eine Rolle bzw. ein Paket mehr.',cost:l=>5000*12**l,max:3},
+ truck:{tab:'logistik',n:'Größere LKWs',d:'Jede Lieferung bringt eine Rolle mehr, an allen Rollen-Express.',cost:l=>2500*5**l,max:6},
+ bspd:{tab:'logistik',n:'Band-Tempo',d:'Alle Förderbänder laufen 25 % schneller pro Stufe.',cost:l=>400*4**l,max:8},
+ bload:{tab:'logistik',n:'Schnelle Greifer',d:'Bänder laden an Anlieferung und Maschinen schneller auf.',cost:l=>600*4**l,max:5}};
 const MU={s:{n:'Tempo',d:'15 % schneller',f:2.2,c:3,max:8},v:{n:'Wert',d:'+30 % pro Paket',f:2.4,c:4,max:10},c:{n:'Lager',d:'+50 % Platz',f:3,c:2,max:4}};
 const HIRE=l=>200*2.1**l,HMAX=10;
 const ROLES={roll:{n:'Rollen-Träger',d:'bringt Rollen von der Anlieferung in die Maschinen',c:0x3fa9f5,cls:'rb'},box:{n:'Paket-Träger',d:'bringt fertige Pakete zum Versand',c:0x5bd36a,cls:'rg'},all:{n:'Allrounder',d:'macht beides, je nachdem was gerade fehlt',c:0xff9a3d,cls:'ro'}};
@@ -172,12 +181,11 @@ const SIDE=[
  {id:'d1',k:'dock',n:'2. Rollen-Express',x:DOCKPOS[1][0],z:DOCKPOS[1][1],cost:250,req:()=>S.built>=1,done:()=>S.docks>=1},
  {id:'cr',k:'catR',n:'Rollen-Katapult',x:-8,z:-3.2,cost:600,req:()=>S.built>=2,done:()=>S.cat.r>0},
  {id:'cb',k:'catB',n:'Paket-Katapult',x:8,z:-3.2,cost:1500,req:()=>S.cat.r>0,done:()=>S.cat.b>0},
- {id:'d2',k:'dock',n:'3. Rollen-Express',x:DOCKPOS[2][0],z:DOCKPOS[2][1],cost:5000,req:()=>S.docks>=1&&S.built>=3,done:()=>S.docks>=2},
- {id:'rp',k:'pipe',n:'Rohrpost-Netz',x:-8,z:-8.2,cost:2.5e6,req:()=>S.built>=7,done:()=>S.auto.pipe>0},
- {id:'ru',k:'chute',n:'Paket-Rutsche',x:8,z:-8.2,cost:4e6,req:()=>S.auto.pipe>0,done:()=>S.auto.chute>0}];
+ {id:'d2',k:'dock',n:'3. Rollen-Express',x:DOCKPOS[2][0],z:DOCKPOS[2][1],cost:5000,req:()=>S.docks>=1&&S.built>=3,done:()=>S.docks>=2}
+];
 const MS=[[30,'Ein Lineal'],[160,'Dein Schreibtisch'],[1200,'Ein Linienbus'],[15700,'Der Kölner Dom'],[1e5,'Ein ganzer Kilometer'],[884900,'Der Mount Everest'],[4219500,'Eine Marathonstrecke'],[1.233e7,'Die Strecke Koblenz bis Köln'],[1.233e8,'Der Rhein'],[4.0075e9,'Der Äquator']];
 const freshMU=()=>({abroll:{s:0,v:0,c:0},band:{s:0,v:0,c:0},robo:{s:0,v:0,c:0},mega:{s:0,v:0,c:0}});
-const D={v:3,money:0,total:0,built:0,up:{},mu:freshMU(),docks:0,cat:{r:0,b:0},auto:{pipe:0,chute:0},helpers:[],owned:0,type:0,strips:0,tears:0,ms:0,won:false,played:0,muted:false};
+const D={v:3,money:0,total:0,built:0,up:{},mu:freshMU(),docks:0,cat:{r:0,b:0},auto:{pipe:0,chute:0},helpers:[],belts:[],rep:0,owned:0,type:0,strips:0,tears:0,ms:0,won:false,played:0,muted:false};
 for(const k in UPG)D.up[k]=0;
 const KEY='klebebaron-v3';
 let S=JSON.parse(JSON.stringify(D));
@@ -186,7 +194,7 @@ function loadSave(){try{let s=JSON.parse(localStorage.getItem(KEY)||'null');
   const old=['st','st','h','st','st','h','st','st','h','st','st','h','st','h','m'],n=o.built||0,seq=old.slice(0,n);
   s={money:o.money||0,total:o.total||0,built:seq.filter(k=>k==='st').length,helpers:seq.filter(k=>k==='h').map(()=>'all'),docks:o.docks||0,cat:o.cat||{r:0,b:0},owned:o.owned||0,type:o.type||0,strips:o.strips||0,tears:o.tears||0,ms:o.ms||0,played:o.played||0,muted:!!o.muted,
    up:{bag:0,shoes:0,supply:0,prof:0,nail:0,hands:0,lupe:0,tech:0,cat:0,...(o.up||{}),shift:Math.min(2,(o.up&&o.up.shift)||0)}}}}
- if(s){S=Object.assign(S,s);S.up=Object.assign({},D.up,s.up||{});S.mu=Object.assign(freshMU(),s.mu||{});S.cat=Object.assign({r:0,b:0},s.cat||{});S.auto=Object.assign({pipe:0,chute:0},s.auto||{});S.helpers=Array.isArray(s.helpers)?s.helpers.filter(r=>ROLES[r]):[]}}catch(e){}}
+ if(s){S=Object.assign(S,s);S.up=Object.assign({},D.up,s.up||{});S.mu=Object.assign(freshMU(),s.mu||{});S.cat=Object.assign({r:0,b:0},s.cat||{});S.auto=Object.assign({pipe:0,chute:0},s.auto||{});if(S.auto.pipe)S.money+=2.5e6;if(S.auto.chute)S.money+=4e6;S.refund=S.auto.pipe||S.auto.chute;S.auto={pipe:0,chute:0};S.helpers=Array.isArray(s.helpers)?s.helpers.filter(r=>ROLES[r]):[];S.belts=Array.isArray(s.belts)?s.belts:[];S.rep=+s.rep||0}}catch(e){}}
 loadSave();
 let NET=null,myId='h',conn=null,peer=null,roomCode='',evq=[];
 const isHost=()=>NET!=='guest';
@@ -196,9 +204,11 @@ function big(n,d){for(const[v,s]of[[1e15,'Brd.'],[1e12,'Bio.'],[1e9,'Mrd.'],[1e6
 const eur=n=>(n<1000?big(n,n<10?2:1):big(n,0))+' €';
 function len(cm){if(cm<100)return nf(cm,1)+' cm';if(cm<1e5)return nf(cm/100,1)+' m';return nf(cm/1e5,cm<1e7?2:0)+' km'}
 const T=()=>TYPES[S.type];
-let rushT=0;const rushM=()=>rushT>0?3:1;
+let rushT=0;const rushM=()=>(rushT>0?3:1)*(1+.04*S.rep);
 const cap=()=>5+3*S.up.bag;
 const hcap=()=>4+2*S.up.hcap;
+const dockIv=()=>.9/(1+.55*S.up.supply),dockMax=()=>16+8*S.up.supply+12*S.up.truck;
+const supplyRate=()=>docks.length*(1+S.up.truck)/dockIv(),demandRate=()=>stations.reduce((a,s)=>a+1/timeOf(s.type),0);
 const valOf=t=>ST[t].val*1.3**S.mu[t].v;
 const timeOf=t=>ST[t].time*.85**S.mu[t].s/1.2**S.up.shift;
 const inCap=t=>Math.round(ST[t].inCap*(1+.5*S.mu[t].c)),outCap=t=>Math.round(ST[t].outCap*(1+.5*S.mu[t].c));
@@ -415,7 +425,7 @@ function makeSchleuder(){const g=new THREE.Group();g.position.set(10.5,0,-13.5);
  const a=new THREE.Vector3();barrel.updateWorldMatrix(true,false);barrel.localToWorld(a.set(0,6,0));const dir=moon.position.clone().sub(a),l=dir.length();beam.position.copy(a).addScaledVector(dir,.5);beam.scale.set(1,l,1);beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
  addOb(10.5,-13.5,3.2,3.2)}
 let builtN=0;
-function buildPad(i,fx){const p=PADS[i];if(p.t==='moon')makeSchleuder();else{const s=makeStation(p.t,p.x,p.z);if(fx)s.pop=1}builtN=i+1}
+function buildPad(i,fx){const p=PADS[i];if(p.t==='moon')makeSchleuder();else{const s=makeStation(p.t,p.x,p.z);if(fx)s.pop=1}builtN=i+1;if(typeof clearArea==='function'){clearArea(p.x,p.z,p.t==='moon'?3.2:2.3,p.t==='moon'?3.2:1.6);reflag()}}
 /* Goldrolle, Funken, Münzen */
 const goldMat=M(0xffcc33,.22,.9,{emissive:0x664400,emissiveIntensity:.5});
 const gold=new THREE.Group();{const m=itemRoll(goldMat);m.scale.setScalar(1.8);m.rotation.x=Math.PI/2;gold.add(m)}gold.visible=false;scene.add(gold);gold.add(new THREE.PointLight(0xffcc33,1.2,4));
@@ -466,6 +476,9 @@ function handle(m,who){
  if(m.a==='mu'){const t=m.t,k=m.k;if(!ST[t]||!MU[k]||S.mu[t][k]>=MU[k].max||!stations.some(s=>s.type===t))return;if(pay(muCost(t,k))){S.mu[t][k]++;emit({t:'sfx',k:'build'});emit({t:'toast',m:ST[t].n+' · '+MU[k].n+' Stufe '+S.mu[t][k]});save()}}
  if(m.a==='hire'){const r=m.r;if(!ROLES[r]||S.helpers.length>=HMAX)return;if(pay(HIRE(S.helpers.length))){S.helpers.push(r);addHelper(r);emit({t:'sfx',k:'build'});emit({t:'toast',m:'Neuer '+ROLES[r].n+' kommt aus dem Personalbüro!'});save()}}
  if(m.a==='role'){const h=helpers[m.i],r=m.r;if(!h||!ROLES[r])return;S.helpers[m.i]=r;setRole(h,r);save()}
+ if(m.a==='drop'){const pl=players[who];if(pl)pl.dropT=1.2}
+ if(m.a==='belt'){const ix=m.ix|0,iz=m.iz|0,d=((m.d|0)%4+4)%4;if(belts.has(ck(ix,iz))){placeBelt(ix,iz,d);beltSave();return}if(m.re)return;if(!cellFree(ix,iz)||!pay(beltCost()))return;placeBelt(ix,iz,d);beltSave();emit({t:'sfx',k:'pay',to:who})}
+ if(m.a==='unbelt'){const ix=m.ix|0,iz=m.iz|0;if(removeBelt(ix,iz)){S.money+=Math.round(beltCost()*.5);beltSave();emit({t:'sfx',k:'drop',to:who})}}
  if(m.a==='type'){const i=m.i;if(!(i>=0&&i<TYPES.length))return;if(i>S.owned){if(i>S.owned+1||!pay(TYPES[i].cost))return;S.owned=i;emit({t:'sfx',k:'build'});emit({t:'toast',m:TYPES[i].n+' freigeschaltet'})}S.type=i;save()}}
 
 /* ---------- Werkbank-Minispiel (nur der eigene Baron) ---------- */
@@ -492,7 +505,10 @@ function tear(){pulling=false;combo=1;throwPiece(MB,L,true);const end=shapeStrip
 let menuOpen=false,started=false;
 window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' ','shift'].includes(k)){keys[k]=true;if(k===' '||k.startsWith('arrow'))e.preventDefault()}
  audio();if(!started)return;
- if(k==='e'&&!e.repeat)interact();if(k==='escape'){if(menuOpen)closeMenu();else if(me.mode==='bench')exitBenchLocal()}
+ if(k==='e'&&!e.repeat&&!buildMode)interact();if(k==='escape'){if(menuOpen)closeMenu();else if(buildMode)setBuild(false);else if(me.mode==='bench')exitBenchLocal()}
+ if(k==='q'&&!e.repeat&&me.mode==='walk'&&!menuOpen&&me.carry>0)act({a:'drop'});
+ if(k==='b'&&!e.repeat&&me.mode==='walk'&&!menuOpen)setBuild(!buildMode);
+ if(k==='r'&&buildMode){bDir=(bDir+1)%4;sfx.drop()}
  if(k===' '&&me.mode==='walk'&&me.y<=0&&!menuOpen){me.vy=5.2;sfx.jump()}
  if(me.mode==='bench'&&['w','a','s','d'].includes(k))exitBenchLocal()});
 window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
@@ -524,7 +540,7 @@ function buildMenu(){$('mcash').textContent='Kasse '+eur(S.money);
   for(const r of Object.keys(ROLES))h+='<div class="row"><div class="rn">'+ROLES[r].n+'</div><div class="rd">'+ROLES[r].d+'</div><button class="buy '+ROLES[r].cls+'" data-hire="'+r+'" '+(n>=HMAX||S.money<c?'disabled':'')+'>'+(n>=HMAX?'Voll':'Einstellen<small>'+eur(c)+'</small>')+'</button></div>';
   h+='<div class="sec">Ausrüstung für alle Praktikanten</div>'+upRow('hcap')+upRow('hspd');
   if(n){h+='<div class="sec">Deine Leute · Klick wechselt die Rolle</div>';helpers.forEach((p,i)=>{const nx={roll:'box',box:'all',all:'roll'}[p.role];h+='<div class="row"><div class="rn">Praktikant '+(i+1)+'</div><div class="rd">'+ROLES[p.role].n+' · trägt bis zu '+hcap()+'</div><button class="buy '+ROLES[p.role].cls+'" data-role="'+i+'" data-r="'+nx+'">'+ROLES[p.role].n+'<small>wechseln</small></button></div>'})}}
- if(mtab==='logistik'){h+='<div class="sec">Nachschub und Katapulte</div><div class="note">Katapulte und weitere Rollen-Express baut ihr auf den hellblauen Baufeldern im Hof. Ganz am Ende gibt es dort Rohrpost-Netz und Paket-Rutsche für die Vollautomatik.</div>'+upRow('supply')+upRow('cat')+upRow('catn')}
+ if(mtab==='logistik'){h+='<div class="sec">Nachschub und Katapulte</div><div class="note">Katapulte und weitere Rollen-Express baut ihr auf den hellblauen Baufeldern im Hof. Förderbänder baut ihr selbst mit B.</div><div class="note" style="font-weight:700;color:'+(supplyRate()<demandRate()?'#ff7a6a':'#5be38a')+'">Nachschub '+nf(supplyRate(),1)+' Rollen/s · Maschinen verbrauchen bis zu '+nf(demandRate(),1)+' Rollen/s'+(supplyRate()<demandRate()?' · zu wenig Rollen! Lieferant, Größere LKWs oder weitere Rollen-Express kaufen':' · passt')+'</div>'+upRow('supply')+upRow('truck')+upRow('bspd')+upRow('bload')+upRow('cat')+upRow('catn')}
  if(mtab==='werkbank'){h+='<div class="sec">Für die Barone und die Werkbank</div>';for(const k of['bag','shoes','prof','nail','hands','lupe'])h+=upRow(k)}
  if(mtab==='band'){h+='<div class="sec">Bandsorte · zählt für alle Pakete und Streifen</div><div class="note">Bessere Sorten bringen viel mehr Geld, machen aber das Abziehen schwerer und die Maschinen klemmen öfter.</div>';
   TYPES.forEach((t,i)=>{const own=i<=S.owned;h+='<div class="row"><div class="rn">'+t.n+'<em>×'+t.mult+'</em></div><div class="rd">'+(i===S.type?'Ist gerade eingelegt.':own?'Gehört euch.':'Neue Sorte freischalten.')+'</div><button class="buy'+(i===S.type?' sel':'')+'" data-t="'+i+'" '+(i===S.type||(!own&&(i>S.owned+1||S.money<t.cost))?'disabled':'')+'>'+(i===S.type?'Aktiv':own?'Einlegen':'Kaufen<small>'+eur(t.cost)+'</small>')+'</button></div>'})}
@@ -538,11 +554,15 @@ let clockT=performance.now(),tt=0,uiAcc=0,saveAcc=0,jamAcc=0,netAcc=0;
 function take(pl,kind){if(pl.carry>=cap()||(pl.kind&&pl.kind!==kind))return false;pl.carry++;pl.kind=kind;emit({t:'sfx',k:'pick',to:pl.id});return true}
 function give(pl){pl.carry--;if(pl.carry<=0){pl.carry=0;pl.kind=null}}
 function zoneStep(pl){
+ if(pl.dropT>0&&pl.carry>0){const b=beltAt(pl.x,pl.z);if(b&&beltRoom(b)&&beltCount<BMAX){const k=pl.kind;b.items.push(mkItem(k,k==='box'?(pl.vals.pop()||'abroll'):null,0));give(pl);emit({t:'sfx',k:'drop',to:pl.id});return}
+  if(pl.kind==='roll'&&!b){const d=docks[0];while(pl.carry>0){give(pl);d.n++}emit({t:'sfx',k:'drop',to:pl.id});emit({t:'toast',m:'Rollen zurück zur Anlieferung gelegt',to:pl.id});return}}
+ if(pl.dropT>0)return;
  for(const d of docks)if(inZ(pl,d)&&d.n>0&&take(pl,'roll')){d.n--;return}
  for(const b of benches)if(pl.kind==='roll'&&inZ(pl,b.zone)&&b.rolls<5){give(pl);b.rolls++;emit({t:'sfx',k:'drop',to:pl.id});return}
  for(const s of stations){
   if(pl.kind==='roll'&&inZ(pl,s.inZ)&&s.inn+s.inc<inCap(s.type)){give(pl);s.inn++;emit({t:'sfx',k:'drop',to:pl.id});return}
   if(inZ(pl,s.outZ)&&s.out>0&&pl.kind!=='roll'&&take(pl,'box')){s.out--;pl.vals.push(s.type);return}}
+ if(pl.kind==='box'&&O&&inZ(pl,EXP)){const i=pl.vals.lastIndexOf(O.t);if(i>=0){pl.vals.splice(i,1);give(pl);O.got++;emit({t:'sfx',k:'coin',to:pl.id});emit({t:'coin',x:EXP.x,y:1.2,z:EXP.z,n:2});if(O.got>=O.n)orderDone();return}}
  if(pl.kind==='box'&&inZ(pl,SELL)){give(pl);sellBox(pl.vals.pop()||'abroll',false,pl.id)}}
 function sellBox(t,quiet,who){if(!ST[t])t='abroll';const val=valOf(t)*T().mult*rushM();earn(val);S.total+=ST[t].cm;
  if(!quiet){emit({t:'sfx',k:'coin',to:who});emit({t:'coin',x:SELL.x,y:1.2,z:SELL.z,n:2});emit({t:'fl',m:'+'+eur(val),x:SELL.x,y:2.2,z:SELL.z})}else if(Math.random()<.5)emit({t:'coin',x:SELL.x,y:1.2,z:SELL.z,n:1})}
@@ -553,9 +573,9 @@ function padStep(pl,dt){if(S.built>=PADS.length)return;const p=PADS[S.built];
    if(p.t==='moon'){S.won=true;emit({t:'win'})}save();
    for(const q of Object.values(players))if(q.active&&Math.abs(q.x-p.x)<1.8&&Math.abs(q.z-p.z)<1.8){q.x=p.x;q.z=p.z+2.4;if(q.id!==myId)emit({t:'move',x:q.x,z:q.z,to:q.id})}}}}
 function simulate(dt){S.played+=dt;if(rushT>0)rushT=Math.max(0,rushT-dt);
- const iv=.9/(1+.55*S.up.supply),mx=16+8*S.up.supply;for(const d of docks){d.t+=dt;if(d.t>=iv){d.t=0;if(d.n<mx)d.n++}}
- catStep(dt);autoStep(dt);
- for(const pl of Object.values(players)){if(!pl.active)continue;const onP=[PADS[S.built]].concat(SIDE.filter(q=>!q.done()&&q.req())).some(p=>p&&Math.abs(pl.x-p.x)<1.1&&Math.abs(pl.z-p.z)<1.1);pl.dwell=onP&&pl.spd<.7?(pl.dwell||0)+dt:0;pl.act-=dt;if(pl.act<=0&&pl.mode==='walk'){pl.act=.09;zoneStep(pl)}padStep(pl,dt);sideStep(pl,dt)}
+ const iv=dockIv(),mx=dockMax(),k=1+S.up.truck;for(const d of docks){d.t+=dt;if(d.t>=iv){d.t=0;d.n=Math.min(mx,d.n+k)}}
+ catStep(dt);beltStep(dt);orderStep(dt);
+ for(const pl of Object.values(players)){if(!pl.active)continue;const onP=[PADS[S.built]].concat(SIDE.filter(q=>!q.done()&&q.req())).some(p=>p&&Math.abs(pl.x-p.x)<1.1&&Math.abs(pl.z-p.z)<1.1);pl.dwell=onP&&pl.spd<.7?(pl.dwell||0)+dt:0;pl.act-=dt;if(pl.dropT>0)pl.dropT-=dt;if(pl.act<=0&&pl.mode==='walk'){pl.act=.09;zoneStep(pl)}padStep(pl,dt);sideStep(pl,dt)}
  jamAcc+=dt;const jtick=jamAcc>=1;if(jtick)jamAcc=0;
  for(const s of stations){const work=s.inn>0&&s.out<outCap(s.type);
   if(s.jam){if(jtick){s.jam.t++;if(s.jam.t>=TECH[S.up.tech])s.jam=null}}
@@ -573,7 +593,7 @@ const CORR=[-6.6,-2,2,6.6];
 function route(fx,fz,tx,tz){if(Math.abs(fz-tz)<.4)return[[tx,tz]];let c=CORR[0],best=1e9;for(const k of CORR){const d=Math.abs(k-fx)+Math.abs(k-tx);if(d<best){best=d;c=k}}return[[c,fz],[c,tz],[tx,tz]]}
 function goTo(h,x,z){h.path=route(h.x,h.z,x,z)}
 const freeIn=s=>inCap(s.type)-s.inn-s.inc;
-function bestFeed(){let b=null,bs=0;for(const s of stations){const f=freeIn(s);if(f<=0)continue;const sc=valOf(s.type)*Math.min(1,f/4)/timeOf(s.type);if(sc>bs){bs=sc;b=s}}return b}
+function bestFeed(res){let b=null,bs=0;for(const s of stations){const f=freeIn(s)-(res||0);if(f<=0)continue;const sc=valOf(s.type)*Math.min(1,f/4)/timeOf(s.type);if(sc>bs){bs=sc;b=s}}return b}
 function bestCollect(){let b=null,bs=0;for(const s of stations){if(!s.out)continue;const sc=s.out*valOf(s.type)*(s.out>=outCap(s.type)?2:1);if(sc>bs){bs=sc;b=s}}return b}
 function bestDock(h){let b=null,bs=-1e9;for(const d of docks){const sc=d.n*2-Math.hypot(h.x-d.x,h.z-d.z);if(d.n>0&&sc>bs){bs=sc;b=d}}return b}
 function dockSpot(d){return[d.x+(d.x<0?rnd(-.2,.7):rnd(-.7,.2)),d.i===0?rnd(.3,.9):d.z+rnd(-.5,.5)]}
@@ -621,7 +641,7 @@ function pipeDrop(s){if(!pipeBuilt)return;tube([s.x-.9,PY,s.z+.95],[s.x-.9,1.4,s
 function buildChute(){if(chuteBuilt)return;chuteBuilt=true;tube([CX,CYB,-15.05],[CX,CYB,0],glassB);tube([CX,CYB,0],[11.6,1.6,0],glassB);
  for(const z of ROWZ)tube([-3.1,CYB,z+.95],[CX,CYB,z+.95],glassB);for(const z of[-1,-6,-11,-15])post(CX,z,CYB);stations.forEach(chuteDrop)}
 function chuteDrop(s){if(!chuteBuilt)return;tube([s.x+.9,1.4,s.z+.95],[s.x+.9,CYB,s.z+.95],glassB)}
-function syncSide(){while(docks.length<1+S.docks)createDock(docks.length);if(S.cat.r&&!cats.r)makeCat('r');if(S.cat.b&&!cats.b)makeCat('b');if(S.auto.pipe)buildPipe();if(S.auto.chute)buildChute();
+function syncSide(){const nd=docks.length;while(docks.length<1+S.docks)createDock(docks.length);if(docks.length!==nd&&typeof reflag==='function')reflag();if(S.cat.r&&!cats.r)makeCat('r');if(S.cat.b&&!cats.b)makeCat('b');if(S.auto.pipe)buildPipe();if(S.auto.chute)buildChute();
  while(helpers.length<S.helpers.length)addHelper(S.helpers[helpers.length]);helpers.forEach((h,i)=>{if(S.helpers[i]&&h.role!==S.helpers[i])setRole(h,S.helpers[i])})}
 function sideStep(pl,dt){if(pl.mode!=='walk')return;for(const q of SIDE){if(q.done()||!q.req())continue;if(pl.dwell>.4&&Math.abs(pl.x-q.x)<1.1&&Math.abs(pl.z-q.z)<1.1&&S.money>0){
   const a=Math.min(S.money,Math.max(15,q.cost*.6)*dt,q.cost-q.paid);S.money-=a;q.paid+=a;if(Math.random()<dt*14)emit({t:'sfx',k:'pay',to:pl.id});
@@ -646,7 +666,7 @@ function flyStep(dt){for(let i=flyers.length-1;i>=0;i--){const f=flyers[i];
  f.m.position.set(f.a[0]+(f.b[0]-f.a[0])*t,f.a[1]+(f.b[1]-f.a[1])*t+Math.sin(t*Math.PI)*4.5,f.a[2]+(f.b[2]-f.a[2])*t);f.m.rotation.x+=dt*9;f.m.rotation.z+=dt*5;
  if(f.t>=1){scene.remove(f.m);flyers.splice(i,1);if(f.cb)f.cb()}}}
 function catStep(dt){const iv=3/(1+.55*S.up.cat),n=1+S.up.catn;
- if(cats.r){const c=cats.r;c.t+=dt;if(c.t>=iv){c.t=0;for(let k=0;k<n;k++){const d=docks.filter(d=>d.n>0).sort((a,b)=>b.n-a.n)[0],s=bestFeed();if(!d||!s)break;
+ if(cats.r){const c=cats.r;c.t+=dt;if(c.t>=iv){c.t=0;for(let k=0;k<n;k++){const d=docks.filter(d=>d.n>0).sort((a,b)=>b.n-a.n)[0],s=bestFeed(2);if(!d||!s)break;
   d.n--;s.inc++;launch('roll',[d.pile.position.x,.4,d.pile.position.z],[s.inPile.position.x,.5,s.inPile.position.z],()=>{s.inc--;s.inn=Math.min(inCap(s.type),s.inn+1)},k*.15)}}}
  if(cats.b){const c=cats.b;c.t+=dt;if(c.t>=iv){c.t=0;for(let k=0;k<n;k++){const s=bestCollect();if(!s)break;s.out--;const ty=s.type;
   launch('box',[s.outPile.position.x,.5,s.outPile.position.z],[SELL.x,.6,SELL.z],()=>sellBox(ty,true),k*.15)}}}}
@@ -657,14 +677,97 @@ function autoStep(dt){
  if(S.auto.chute)for(const s of stations){s.ct+=dt;const iv=timeOf(s.type)*.9;if(s.ct>=iv){if(s.out>0){s.ct=0;s.out--;const ty=s.type,zz=s.z+.95,sx=s.x+.9;
    sendTube('box',[[sx,1.3,zz],[sx,CYB,zz],[CX,CYB,zz],[CX,CYB,0],[11.6,1.6,0]],()=>sellBox(ty,true))}else s.ct=iv}}}
 
+/* ---------- Förderbänder (selbst gebaut) ---------- */
+const belts=new Map();let beltVer=0,buildMode=false,bDir=0,hover=null,drawing=0,lastCell=null,beltCount=0;
+const DIRS=[[1,0],[0,1],[-1,0],[0,-1]],GAP=.34,BMAX=700;
+const ck=(ix,iz)=>ix+','+iz;
+const beltCost=()=>Math.round(30*1.012**belts.size);
+const beltSpeed=()=>1.3*(1+.25*S.up.bspd);
+const loadIv=()=>.45/(1+.4*S.up.bload);
+const bTex=ctex(64,64,(g,w,h)=>{g.fillStyle='#2a2b30';g.fillRect(0,0,w,h);g.fillStyle='#ffd21f';g.beginPath();g.moveTo(20,18);g.lineTo(40,32);g.lineTo(20,46);g.lineTo(27,32);g.closePath();g.fill();g.fillStyle='#45464d';for(let x=0;x<w;x+=16)g.fillRect(x,0,2,h)});
+bTex.wrapS=bTex.wrapT=THREE.RepeatWrapping;
+const bTop=new THREE.MeshStandardMaterial({map:bTex,roughness:.75}),bSide=M(0xffc21a,.5),bGeo=new THREE.BoxGeometry(.98,.1,.86);
+const bMats=[bSide,bSide,bTop,dark,bSide,bSide];
+const iRollGeo=new THREE.CylinderGeometry(.19,.19,.12,16),iBoxGeo=new THREE.BoxGeometry(.38,.26,.3);
+function mkItem(k,t,p){const m=new THREE.Mesh(k==='roll'?iRollGeo:iBoxGeo,k==='roll'?tapeM:boxM);m.castShadow=true;scene.add(m);beltCount++;return{k,t,p,m}}
+function killItem(it){scene.remove(it.m);beltCount--}
+function beltAt(x,z){return belts.get(ck(Math.floor(x),Math.floor(z)))}
+function beltRoom(b){let mn=9;for(const it of b.items)mn=Math.min(mn,it.p);return mn>=GAP}
+function cellFree(ix,iz){const cx=ix+.5,cz=iz+.5;if(Math.abs(cx)>XW-.2||cz<YMIN+.3||cz>YMAX-.3)return false;
+ for(const o of obst)if(cx+.45>o[0]&&cx-.45<o[1]&&cz+.45>o[2]&&cz-.45<o[3])return false;
+ for(let i=S.built;i<PADS.length;i++){const p=PADS[i],w=p.t==='moon'?1.6:1.15,d=p.t==='moon'?1.6:.8;if(Math.abs(cx-p.x)<w+.45&&Math.abs(cz-p.z)<d+.45)return false}
+ for(const q of SIDE)if(!q.done()&&Math.abs(cx-q.x)<1.55&&Math.abs(cz-q.z)<1.55)return false;
+ for(const b of benches)if(Math.abs(cx-b.zone.x)<1.2&&Math.abs(cz-b.zone.z)<1.2)return false;
+ if(Math.abs(cx-SHOP.x)<1.3&&Math.abs(cz-SHOP.z)<1.3)return false;return true}
+function flags(b){const c={x:b.ix+.5,z:b.iz+.5};b.ins=stations.filter(s=>Math.hypot(c.x-s.inZ.x,c.z-s.inZ.z)<.95);b.outs=stations.filter(s=>Math.hypot(c.x-s.outZ.x,c.z-s.outZ.z)<.95);
+ b.sell=Math.hypot(c.x-SELL.x,c.z-SELL.z)<1.7;b.dock=docks.find(d=>Math.hypot(c.x-d.x,c.z-d.z)<1.8)||null;b.lt=0}
+function reflag(){belts.forEach(flags)}
+function placeBelt(ix,iz,dir){let b=belts.get(ck(ix,iz));if(b){b.dir=dir;b.m.rotation.y=-dir*Math.PI/2;beltVer++;return b}
+ b={ix,iz,dir,items:[],m:new THREE.Mesh(bGeo,bMats)};b.m.position.set(ix+.5,.05,iz+.5);b.m.rotation.y=-dir*Math.PI/2;b.m.receiveShadow=true;scene.add(b.m);flags(b);belts.set(ck(ix,iz),b);beltVer++;return b}
+function removeBelt(ix,iz){const b=belts.get(ck(ix,iz));if(!b)return false;for(const it of b.items){if(isHost()&&it.k==='roll')docks[0].n++;killItem(it)}scene.remove(b.m);belts.delete(ck(ix,iz));beltVer++;return true}
+function clearArea(x,z,w,d){for(const b of[...belts.values()]){const cx=b.ix+.5,cz=b.iz+.5;if(Math.abs(cx-x)<w/2+.45&&Math.abs(cz-z)<d/2+.45){removeBelt(b.ix,b.iz);if(isHost())S.money+=15}}}
+function beltSave(){S.belts=[...belts.values()].map(b=>[b.ix,b.iz,b.dir])}
+function beltRestore(){for(const a of S.belts||[])if(!belts.has(ck(a[0],a[1])))placeBelt(a[0],a[1],a[2])}
+function beltStep(dt){const sp=beltSpeed()*dt,li=loadIv();
+ for(const b of belts.values()){
+  b.lt+=dt;if(b.lt>=li&&beltCount<BMAX){b.lt=0;if(beltRoom(b)){const s=b.outs.find(s=>s.out>0);if(s){s.out--;b.items.push(mkItem('box',s.type,0))}else if(b.dock&&b.dock.n>0){b.dock.n--;b.items.push(mkItem('roll',null,0))}}}
+  if(!b.items.length)continue;b.items.sort((a,c)=>c.p-a.p);const nb=belts.get(ck(b.ix+DIRS[b.dir][0],b.iz+DIRS[b.dir][1]));const canNext=nb&&nb.dir!==(b.dir+2)%4;
+  for(let i=0;i<b.items.length;i++){const it=b.items[i];const lim=i===0?1:b.items[i-1].p-GAP;it.p=Math.max(it.p,Math.min(it.p+sp,lim));
+   if(it.p>=.5&&!it.gone){if(it.k==='roll'){const s=b.ins.find(s=>freeIn(s)>2);if(s){s.inn++;it.gone=1}else if(b.sell){docks[0].n++;it.gone=1}}else if(b.sell){sellBox(it.t,true);it.gone=1}}
+   if(!it.gone&&it.p>=1&&canNext&&beltRoom(nb)){it.p-=1;nb.items.push(it);it.gone=2}}
+  if(b.items.some(it=>it.gone)){b.items=b.items.filter(it=>{if(it.gone===1)killItem(it);if(it.gone){const g=it.gone;delete it.gone;return false}return true})}}}
+function beltPresent(dt){bTex.offset.x-=beltSpeed()*dt;
+ if(!isHost()){const sp=beltSpeed()*dt;for(const b of belts.values()){b.items.sort((a,c)=>c.p-a.p);for(let i=0;i<b.items.length;i++){const it=b.items[i];it.p=Math.min(it.p+sp,i===0?1:b.items[i-1].p-GAP,1)}}}
+ for(const b of belts.values()){const[dx,dz]=DIRS[b.dir];for(const it of b.items){const p=Math.min(1,Math.max(0,it.p))-.5;it.m.position.set(b.ix+.5+dx*p,it.k==='roll'?.17:.24,b.iz+.5+dz*p);it.m.rotation.y=it.k==='roll'?0:-b.dir*Math.PI/2}}
+ ghostStep()}
+/* Netz: Layout nur bei Änderung, Inhalte immer */
+let sentVer=-1;
+function beltSnapLayout(){if(sentVer===beltVer)return 0;sentVer=beltVer;return[...belts.values()].map(b=>[b.ix,b.iz,b.dir])}
+function beltSnapItems(){return[...belts.values()].map(b=>b.items.map(it=>[it.k==='roll'?1:2,r2(it.p)]))}
+function beltApply(m){if(m.bl){const want=new Set(m.bl.map(a=>ck(a[0],a[1])));for(const b of[...belts.values()])if(!want.has(ck(b.ix,b.iz)))removeBelt(b.ix,b.iz);
+  const order=[];for(const a of m.bl)order.push(placeBelt(a[0],a[1],a[2]));belts.clear();for(const b of order)belts.set(ck(b.ix,b.iz),b)}
+ if(!m.bi)return;let i=0;for(const b of belts.values()){const arr=m.bi[i++]||[];while(b.items.length>arr.length)killItem(b.items.pop());
+  arr.forEach((a,j)=>{const k=a[0]===1?'roll':'box';let it=b.items[j];if(it&&it.k!==k){killItem(it);it=null}if(!it){it=mkItem(k,null,a[1]);b.items[j]=it}it.p=a[1]})}}
+/* Baumodus */
+const ghost=new THREE.Mesh(new THREE.BoxGeometry(.98,.12,.86),new THREE.MeshBasicMaterial({color:0x5be38a,transparent:true,opacity:.45,depthWrite:false}));ghost.visible=false;scene.add(ghost);
+const gArrow=new THREE.Mesh(new THREE.ConeGeometry(.22,.4,3),new THREE.MeshBasicMaterial({color:0xffffff}));gArrow.rotation.z=-Math.PI/2;ghost.add(gArrow);gArrow.position.y=.12;
+const gplane=new THREE.Plane(new THREE.Vector3(0,1,0),0),gray=new THREE.Raycaster(),gp=new THREE.Vector3(),gndc=new THREE.Vector2();
+function setBuild(on){buildMode=on;$('bbuild').classList.toggle('on',on);$('buildhud').hidden=!on;ghost.visible=false;drawing=0;if(on)toast('Baumodus! Mit der Maus Bänder ziehen, R dreht, Rechtsklick reißt ab, B beendet')}
+function cellFromEv(e){gndc.set(e.clientX/VW()*2-1,-(e.clientY/VH())*2+1);gray.setFromCamera(gndc,camera);if(!gray.ray.intersectPlane(gplane,gp))return null;return[Math.floor(gp.x),Math.floor(gp.z)]}
+function ghostStep(){if(!buildMode||!hover){ghost.visible=false;return}ghost.visible=true;ghost.position.set(hover[0]+.5,.08,hover[1]+.5);ghost.rotation.y=-bDir*Math.PI/2;
+ const ex=belts.has(ck(hover[0],hover[1]));ghost.material.color.setHex(drawing===2?0xff4a3d:ex?0x7fb6ff:(cellFree(hover[0],hover[1])&&S.money>=beltCost()?0x5be38a:0xff4a3d))}
+function tryPlace(c,dir){if(belts.has(ck(c[0],c[1]))){act({a:'belt',ix:c[0],iz:c[1],d:dir});return}if(!cellFree(c[0],c[1]))return;if(S.money<beltCost()){toast('Zu wenig Geld für ein Band');return}act({a:'belt',ix:c[0],iz:c[1],d:dir})}
+cv.addEventListener('contextmenu',e=>{if(buildMode)e.preventDefault()});
+cv.addEventListener('pointerdown',e=>{if(!buildMode)return;const c=cellFromEv(e);if(!c)return;cv.setPointerCapture(e.pointerId);
+ if(e.button===2||e.shiftKey){drawing=2;act({a:'unbelt',ix:c[0],iz:c[1]})}else{drawing=1;tryPlace(c,bDir)}lastCell=c});
+cv.addEventListener('pointermove',e=>{if(!buildMode)return;const c=cellFromEv(e);hover=c;if(!c||!drawing||!lastCell||(c[0]===lastCell[0]&&c[1]===lastCell[1]))return;
+ if(drawing===2){act({a:'unbelt',ix:c[0],iz:c[1]});lastCell=c;return}
+ const dx=c[0]-lastCell[0],dz=c[1]-lastCell[1];if(Math.abs(dx)+Math.abs(dz)===1){const d=dx===1?0:dz===1?1:dx===-1?2:3;bDir=d;if(belts.has(ck(lastCell[0],lastCell[1]))||true)act({a:'belt',ix:lastCell[0],iz:lastCell[1],d,re:1});tryPlace(c,d)}else tryPlace(c,bDir);lastCell=c});
+cv.addEventListener('pointerup',()=>{drawing=0;lastCell=null});
+$('bbuild').addEventListener('click',e=>{audio();e.target.blur();if(started&&me.mode==='walk'&&!menuOpen)setBuild(!buildMode)});
+/* ---------- Express-Aufträge ---------- */
+const EXP={x:10.6,z:-3.6,r:1.15};
+zonePad(EXP.x,EXP.z,EXP.r,0xff9a3d,.55);
+{const g=new THREE.Group();g.position.set(12.9,0,-3.6);scene.add(g);box(.3,2.6,.3,dark,0,1.3,-.9,g);box(.3,2.6,.3,dark,0,1.3,.9,g);box(.25,1.1,2.2,M(0xff9a3d,.5,0,{emissive:0xff6a00,emissiveIntensity:.35}),0,2.3,0,g);addOb(12.9,-3.6,.6,2.4)}
+const expLbl=label(340,120,1);expLbl.position.set(EXP.x,2.8,EXP.z);scene.add(expLbl);
+let O=null,oCool=25;
+function newOrder(){const types=[...new Set(stations.map(s=>s.type))];if(!types.length)return;const t=types[Math.max(0,types.length-1-Math.floor(Math.random()*Math.min(2,types.length)))];
+ const n=Math.round(Math.min(30,5+Math.random()*5+S.rep*.6)),tmax=Math.round(40+n*6);O={t,n,got:0,time:tmax,tmax,reward:Math.round(n*valOf(t)*T().mult*7*(1+.04*S.rep))};
+ emit({t:'toast',m:'Express-Auftrag! '+n+'× '+ST[t].n+'-Pakete zur orangen Rampe, '+tmax+' Sekunden'});emit({t:'sfx',k:'rush'})}
+function orderDone(){earn(O.reward);S.rep++;emit({t:'toast',m:'Auftrag erledigt! +'+eur(O.reward)+' und euer Ruf steigt auf ×'+nf(1+.04*S.rep,2)});emit({t:'sfx',k:'build'});emit({t:'coin',x:EXP.x,y:1.5,z:EXP.z,n:16});O=null;oCool=14;save()}
+function orderStep(dt){if(!O){oCool-=dt;if(oCool<=0&&stations.length)newOrder();return}O.time-=dt;if(O.time<=0){emit({t:'toast',m:'Express-Auftrag verpasst! Der nächste kommt gleich'});emit({t:'sfx',k:'jam'});O=null;oCool=18}}
+function orderPresent(){const lv=me.mode==='walk';expLbl.visible=lv;drawLabel(expLbl,O?['EXPRESS · '+O.got+'/'+O.n,ST[O.t].n+' · '+Math.ceil(O.time)+' s']:['EXPRESS-RAMPE','Ruf ×'+nf(1+.04*S.rep,2)],'#ff9a3d');
+ $('ord').hidden=!O;if(O){$('ordt').textContent='Express · '+ST[O.t].n+' · '+Math.ceil(O.time)+' s';$('ordb').textContent=O.got+' / '+O.n+'  →  '+eur(O.reward);$('ordbar').style.width=(O.got/O.n*100).toFixed(0)+'%'}
+ if(buildMode){$('buildhud').innerHTML='Baumodus · ein Band kostet '+eur(beltCost())+' · '+belts.size+' Bänder gebaut<small>Mit gedrückter Maus Bänder ziehen, die Richtung folgt der Maus. <b>R</b> dreht, <b>Rechtsklick</b> oder <b>Shift+Klick</b> reißt ab (halbes Geld zurück), <b>B</b> beendet.<br>Bänder an der Anlieferung laden Rollen auf. Maschinen nehmen sich Rollen vom Band, das an ihrem blauen Kreis vorbeiläuft, und legen Pakete auf Bänder an ihrem grünen Kreis. Am Versand wird verkauft.</small>'}}
+
 /* ---------- Netzwerk ---------- */
 const r2=v=>Math.round(v*100)/100;
 function snap(){const pl=p=>[r2(p.x),r2(p.z),r2(p.y),r2(p.face),r2(p.spd),p.carry,p.kind==='box'?2:p.kind==='roll'?1:0,p.mode==='bench'?1:0];
- return{t:'s',S:{money:S.money,total:S.total,built:S.built,up:S.up,mu:S.mu,type:S.type,owned:S.owned,won:S.won,strips:S.strips,tears:S.tears,docks:S.docks,cat:S.cat,auto:S.auto,helpers:S.helpers},pp:padPaid,ips:ipsVal,sp:SIDE.map(q=>q.paid||0),d:docks.map(d=>d.n),
+ return{t:'s',S:{money:S.money,total:S.total,built:S.built,up:S.up,mu:S.mu,type:S.type,owned:S.owned,won:S.won,strips:S.strips,tears:S.tears,docks:S.docks,cat:S.cat,auto:S.auto,helpers:S.helpers,rep:S.rep},pp:padPaid,bv:beltVer,bl:beltSnapLayout(),bi:beltSnapItems(),o:O?[O.t,O.n,O.got,r2(O.time),O.reward,O.tmax]:0,ips:ipsVal,sp:SIDE.map(q=>q.paid||0),d:docks.map(d=>d.n),
   b:benches.map(b=>[b.rolls,b.left,b.user]),st:stations.map(s=>[s.inn,s.out,s.jam?s.jam.left:-1,s.made||0]),
   hp:helpers.map(h=>[r2(h.x),r2(h.z),r2(h.face),h.carry,h.kind==='box'?2:h.kind==='roll'?1:0,h.spd>0?1:0]),p:[pl(players.h),pl(players.g)],gd:G.on?[r2(G.x),r2(G.z),r2(G.vx),r2(G.vz)]:0,r:rushT,ev:evq}}
 let gotSnap=false;
-function applySnap(m){Object.assign(S,m.S);padPaid=m.pp;ipsVal=m.ips||0;(m.sp||[]).forEach((v,i)=>SIDE[i].paid=v);syncSide();(m.d||[]).forEach((n,i)=>{if(docks[i])docks[i].n=n});
+function applySnap(m){Object.assign(S,m.S);beltApply(m);O=m.o?{t:m.o[0],n:m.o[1],got:m.o[2],time:m.o[3],reward:m.o[4],tmax:m.o[5]}:null;padPaid=m.pp;ipsVal=m.ips||0;(m.sp||[]).forEach((v,i)=>SIDE[i].paid=v);syncSide();(m.d||[]).forEach((n,i)=>{if(docks[i])docks[i].n=n});
  m.b.forEach((a,i)=>{const b=benches[i];b.rolls=a[0];b.left=a[1];b.user=a[2]});
  while(builtN<S.built)buildPad(builtN,gotSnap);
  m.st.forEach((a,i)=>{const s=stations[i];if(!s)return;s.inn=a[0];s.out=a[1];s.jam=a[2]>=0?{left:a[2],t:0}:null;s.made=a[3]});
@@ -706,7 +809,7 @@ setInterval(()=>{if(NET==='guest'&&conn&&conn.open)conn.send({a:'pos',x:r2(me.x)
 function moveMe(dt){let ix=0,iz=0;if(me.mode==='walk'&&!menuOpen&&started){if(keys.w||keys.arrowup)iz-=1;if(keys.s||keys.arrowdown)iz+=1;if(keys.a||keys.arrowleft)ix-=1;if(keys.d||keys.arrowright)ix+=1}
  const il=Math.hypot(ix,iz)||1,sp=4.3*(1+.13*S.up.shoes)*(keys.shift?1.55:1)*(rushT>0?1.3:1);
  me.vx+=((ix/il)*sp-me.vx)*Math.min(1,dt*12);me.vz+=((iz/il)*sp-me.vz)*Math.min(1,dt*12);
- me.x+=me.vx*dt;me.z+=me.vz*dt;collide(me,.35);me.vy-=16*dt;me.y=Math.max(0,me.y+me.vy*dt);if(me.y===0)me.vy=Math.max(0,me.vy);
+ me.x+=me.vx*dt;me.z+=me.vz*dt;if(me.y<.05){const bb=beltAt(me.x,me.z);if(bb){me.x+=DIRS[bb.dir][0]*beltSpeed()*.8*dt;me.z+=DIRS[bb.dir][1]*beltSpeed()*.8*dt}}collide(me,.35);me.vy-=16*dt;me.y=Math.max(0,me.y+me.vy*dt);if(me.y===0)me.vy=Math.max(0,me.vy);
  me.spd=Math.hypot(me.vx,me.vz);if(me.spd>.3)me.face+=angDiff(Math.atan2(me.vx,me.vz),me.face)*Math.min(1,dt*12)}
 function present(dt){
  moveMe(dt);
@@ -725,7 +828,7 @@ function present(dt){
   pile(s.inPile,s.inn,'roll',16);pile(s.outPile,s.out,'box',14);s.lbl.visible=lv;
   drawLabel(s.lbl,[s.d.n,s.jam?'STÖRUNG! '+s.jam.left+'× E':'▶ '+s.inn+'/'+inCap(s.type)+'   ■ '+s.out+'/'+outCap(s.type)],s.jam?'#ff4a3d':'#ffd21f')}
  for(const d of docks){pile(d.pile,d.n,'roll',27);drawLabel(d.lbl,[d.i?'ROLLEN-EXPRESS '+(d.i+1):'ANLIEFERUNG',d.n+' Rollen'],'#7fb6ff');d.lbl.visible=lv}
- sidePresent(lv);flyStep(dt);
+ sidePresent(lv);flyStep(dt);beltPresent(dt);orderPresent();
  for(let i=puffs.length-1;i>=0;i--){const p=puffs[i];p.l-=dt;p.m.position.y+=dt*1.2;p.m.scale.setScalar(1+(.6-p.l)*3);p.m.material.opacity=Math.max(0,p.l);if(p.l<=0){scene.remove(p.m);p.m.material.dispose();puffs.splice(i,1)}}
  for(const b of benches){const n=b.rolls+(b.left>0?1:0),who=b.user?(b.user===myId?'Du':(NET?'Partner':'')):'';drawLabel(b.lbl,['WERKBANK',who?who+' arbeitet':n+' Rollen · E'],'#ffd21f');b.stock.forEach((r,i)=>r.visible=i<b.rolls);b.lbl.visible=lv}
  for(const l of[sellLbl,shopLbl])l.visible=lv;
@@ -754,7 +857,7 @@ function present(dt){
 const camPos=new THREE.Vector3(0,12,20),camLook=new THREE.Vector3();
 function camStep(dt){let cp,cl;
  if(me.mode==='bench'&&MB){const rp=new THREE.Vector3(0,CY,0);MB.rig.localToWorld(rp);cl=rp.add(new THREE.Vector3(0,.15,0));cp=new THREE.Vector3(MB.x+.8,TOP+2.1,8.9)}
- else{const a=VW()/VH()<1?1.35:1;cl=new THREE.Vector3(me.x,.8,me.z-.6);cp=new THREE.Vector3(me.x*.85,11.5*a,me.z+9.6*a)}
+ else{const a=(VW()/VH()<1?1.35:1)*(buildMode?1.45:1);cl=new THREE.Vector3(me.x,.8,me.z-.6);cp=new THREE.Vector3(me.x*.85,11.5*a,me.z+9.6*a)}
  const k=Math.min(1,dt*(me.mode==='bench'?5:6));camPos.lerp(cp,k);camLook.lerp(cl,k);camera.position.copy(camPos);camera.lookAt(camLook);
  sun.position.set(me.x+8,18,me.z+10);sun.target.position.set(me.x,0,me.z)}
 function layout(){renderer.setSize(VW(),VH(),false);camera.aspect=VW()/VH();camera.fov=VW()/VH()<1?60:45;camera.updateProjectionMatrix()}
@@ -770,6 +873,8 @@ function ui(){$('money').textContent=eur(S.money);$('ips').textContent=eur(ipsVa
   bh.innerHTML=(pulling?(pv>pullLimit()*.75?'Langsamer! Gleich reißt es':'Schön gleichmäßig runterziehen und loslassen · '+nf(L*25,1)+' cm'):found?'Kante gefunden! Maus drücken und langsam nach unten ziehen.':fastWarn>0?'Zu schnell gedreht, der Nagel rutscht drüber!':grip>0?'Da hängt was am Nagel … langsam weiter!':'Maus gedrückt halten und hoch und runter ziehen, um die Rolle zu drehen. Langsam über die Kante fahren.')
    +'<small>Noch '+Math.max(0,MB.left)+' Streifen auf dieser Rolle · '+MB.rolls+' Rollen in Reserve · Serie ×'+nf(combo,1)+' · <b>E</b> oder <b>Esc</b> zurück</small>';pr.hidden=true;return}
  const js=stations.find(s=>s.jam&&inZ(me,s.fixZ));
+ if(buildMode){pr.hidden=true;return}
+ if(inZ(me,EXP)&&!js){t=O?(me.kind==='box'&&me.vals&&isHost()&&me.vals.includes(O.t)?'Pakete werden geliefert …':'Express-Auftrag · bring '+(O.n-O.got)+'× '+ST[O.t].n+'-Pakete hierher'):'Express-Rampe · gleich kommt ein neuer Auftrag';pr.hidden=false;pr.innerHTML=t;pr.classList.remove('bad');return}
  if(js){t='Hämmer <kbd>E</kbd> um die '+js.d.n+' zu reparieren ('+js.jam.left+')';bad=true}
  else{const b=benches.find(b=>inZ(me,b.zone));
   if(b)t=b.user&&b.user!==myId?'Hier arbeitet gerade dein Partner':(b.rolls>0||b.left>0)?'<kbd>E</kbd> Streifen abziehen':me.kind==='roll'?'Rollen werden abgelegt':'Erst Rollen von der Anlieferung holen';
@@ -783,7 +888,7 @@ function ui(){$('money').textContent=eur(S.money);$('ips').textContent=eur(ipsVa
 function win(){const h=Math.floor(S.played/3600),m=Math.floor(S.played%3600/60);$('wtext').textContent='Nach '+(h?h+' Std. ':'')+m+' Min., '+S.strips.toLocaleString('de-DE')+' handgezogenen Streifen und '+len(S.total)+' Klebeband hängt der Mond jetzt an der Erde.';$('win').hidden=false}
 const setMute=()=>$('mute').textContent=S.muted?'Ton aus':'Ton an';
 $('mute').addEventListener('click',e=>{S.muted=!S.muted;setMute();audio();e.target.blur();if(isHost())save()});
-function startGame(){if(isHost()){for(let i=builtN;i<S.built;i++)buildPad(i,false);syncSide()}started=true;$('lobby').hidden=true}
+function startGame(){if(isHost()){for(let i=builtN;i<S.built;i++)buildPad(i,false);syncSide();beltRestore();if(S.refund){S.refund=0;setTimeout(()=>toast('Rohrpost und Rutsche gibt es nicht mehr. Ihr habt das Geld zurückbekommen. Baut jetzt eigene Förderbänder mit B!'),1200)}}started=true;$('lobby').hidden=true}
 $('bsolo').addEventListener('click',()=>{audio();startGame()});
 let rArm=false;$('breset').addEventListener('click',e=>{if(!rArm){rArm=true;e.target.textContent='Wirklich alles löschen? Nochmal klicken';e.target.style.color='var(--red)';setTimeout(()=>{rArm=false;e.target.textContent='Spielstand löschen und neu anfangen';e.target.style.color='var(--soft)'},4000);return}
  wiping=true;try{localStorage.removeItem(KEY);localStorage.removeItem('klebebaron-v2');localStorage.removeItem('klebebaron-v1')}catch(x){}location.reload()});
@@ -798,7 +903,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});wi
 $('lobby').hidden=false;
 function frame(t){const dt=Math.min(.05,(t-clockT)/1000);clockT=t;tt+=dt;if(isHost()&&started)simulate(dt);present(dt);renderer.render(scene,camera);requestAnimationFrame(frame)}
 setMute();layout();requestAnimationFrame(frame);
-if(new URLSearchParams(location.search).has('test'))window.__kb={cats,SIDE,players,S:()=>S,stations,docks,benches,helpers,get me(){return me},act,step:n=>{for(let i=0;i<n;i++){if(isHost()&&started)simulate(.05);present(.05)}},net:()=>NET};
+if(new URLSearchParams(location.search).has('test'))window.__kb={get O(){return O},belts,cats,SIDE,players,S:()=>S,stations,docks,benches,helpers,get me(){return me},act,step:n=>{for(let i=0;i<n;i++){if(isHost()&&started)simulate(.05);present(.05)}},net:()=>NET};
 }
 </script>
 </body>
