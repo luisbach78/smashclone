@@ -868,7 +868,8 @@ function applySnap(m){const mu=S.muted;Object.assign(S,m.S);S.muted=mu;if(m.dp!=
  if(m.gd){G.on=true;G.x=m.gd[0];G.z=m.gd[1];G.vx=m.gd[2];G.vz=m.gd[3]}else G.on=false;rushT=m.r;
  if(!gotSnap){gotSnap=true;started=true;$('lobby').hidden=true;toast('Du bist im Raum! Gemeinsame Kasse, gemeinsame Fabrik');sfx.join()}
  (m.ev||[]).forEach(e=>{if(!e.to||e.to==='g')applyEv(e)})}
-function peerOpts(){const q=new URLSearchParams(location.search).get('peer');if(!q)return{debug:0};const[h,p]=q.split(':');return{host:h,port:+p||9000,path:'/',secure:false,debug:0}}
+const ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478','turn:eu-0.turn.peerjs.com:3478?transport=tcp','turn:us-0.turn.peerjs.com:3478?transport=tcp'],username:'peerjs',credential:'peerjsp'}],sdpSemantics:'unified-plan'};
+function peerOpts(){const q=new URLSearchParams(location.search).get('peer');if(!q)return{debug:0,config:ICE};const[h,p]=q.split(':');return{host:h,port:+p||9000,path:'/',secure:false,debug:0}}
 const lstat=(t,bad)=>{$('lstat').textContent=t;$('lstat').classList.toggle('bad',!!bad)};
 function newCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';for(let i=0;i<4;i++)c+=A[Math.floor(Math.random()*A.length)];return c}
 function hostRoom(){if(typeof Peer==='undefined'){lstat('Online-Modus geht hier nicht. Öffne das Spiel über den GitHub-Link.',true);return}
@@ -888,7 +889,7 @@ function showRoomCard(){const url=location.href.split('#')[0]+'#raum-'+roomCode;
 function roomUi(){if(!NET){$('room').hidden=true;return}$('room').hidden=false;$('roomc').textContent=roomCode;const ok=NET==='host'?players.g.active:true;$('roomt').textContent=NET==='host'?(ok?'Raum · Partner da':'Raum · wartet auf Partner'):'Raum · verbunden';$('room').classList.toggle('ok',ok)}
 function joinRoom(){const code=$('jcode').value.trim().toUpperCase();if(code.length!==4){lstat('Der Code hat 4 Zeichen',true);return}
  if(typeof Peer==='undefined'){lstat('Online-Modus geht hier nicht. Öffne das Spiel über den GitHub-Link.',true);return}
- lstat('Verbinde mit Raum '+code+' …');roomCode=code;peer=new Peer(undefined,peerOpts());
+ lstat('Verbinde mit Raum '+code+' …');clearTimeout(window.joinTO);window.joinTO=setTimeout(()=>{if(NET!=='guest')lstat('Keine Verbindung. Im Uni-WLAN (eduroam) blockiert die Firewall oft solche Spiel-Verbindungen. Probiert einen Handy-Hotspot.',true)},15000);roomCode=code;peer=new Peer(undefined,peerOpts());
  peer.on('open',()=>{conn=peer.connect('klebebaron-'+code,{reliable:true});
   conn.on('open',()=>{NET='guest';myId='g';me=players.g;me.active=true;me.g.visible=true;players.h.g.visible=true;const mu=S.muted;S=JSON.parse(JSON.stringify(D));S.muted=mu;
    for(const k in players)players[k].x=players[k].tx;roomUi();conn.send({a:'hello'})});
