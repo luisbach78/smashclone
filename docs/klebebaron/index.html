@@ -541,7 +541,7 @@ function applyEv(ev){switch(ev.t){
  case'sfx':if(sfx[ev.k])sfx[ev.k]();break;case'benchOk':enterBenchLocal(ev.i);break;case'benchEnd':toast('Rolle leer! Hol Nachschub an der Anlieferung');exitBenchLocal(false);break;
  case'move':me.x=ev.x;me.z=ev.z;break;
  case'proj':flyLocal(ev.k,ev.a,ev.b,null,ev.d);if(cats[ev.k==='roll'?'r':'b'])cats[ev.k==='roll'?'r':'b'].kick=1;sfx.whoosh();break;
- case'tube':tubeLocal(ev.k,ev.p);sfx.pipe();break;case'win':win();break;case'travel':if(!isHost()){$('lost').querySelector('h2').textContent='Auf zum nächsten Planeten!';$('lost').querySelector('p').textContent='Dein Partner reist weiter. Lass dir den neuen Raum-Code geben und tritt wieder bei.';$('lost').hidden=false}break}}
+ case'tube':tubeLocal(ev.k,ev.p);sfx.pipe();break;case'win':win();break;case'travel':if(!isHost()){travelSplash(ev.pl);try{localStorage.setItem('kb-resume',JSON.stringify({mode:'join',code:roomCode,t:Date.now()}))}catch(e){}setTimeout(()=>location.reload(),2500)}break}}
 
 /* ---------- Aktionen (Host entscheidet) ---------- */
 function act(msg){if(NET==='guest'){if(conn&&conn.open)conn.send(msg)}else handle(msg,'h')}
@@ -888,11 +888,12 @@ function guestJoined(c){conn=c;if(!started)startGame();const g=players.g;Object.
  emit({t:'toast',m:'Dein Partner ist da! Ihr teilt euch Kasse und Fabrik'+(c.relay?' (über Relay verbunden)':'')});sfx.join();roomUi();try{conn.send(snap())}catch(e){}evq=[]}
 function guestData(m){if(!m||typeof m!=='object')return;if(m.a==='pos'){const g=players.g;g.tx=+m.x||0;g.tz=+m.z||0;g.y=+m.y||0;g.face=+m.f||0;g.spd=+m.s||0;g.mode=m.b?'bench':'walk';return}if(m.a==='hello')return;handle(m,'g')}
 let relayHost=null;
-function hostRoom(){roomCode=newCode();lstat('Raum wird erstellt …');const code=roomCode;
- const ready=()=>{if(!NET&&roomCode===code){NET='host';showRoomCard()}};
- if(typeof Peer!=='undefined'){peer=new Peer('klebebaron-'+code,peerOpts());peer.on('open',ready);
-  peer.on('error',e=>{if(e.type==='unavailable-id'){peer.destroy();if(relayHost)relayHost.close();if(!NET)hostRoom()}});
-  peer.on('connection',c=>{if(conn&&conn.open){c.on('open',()=>c.close());return}c.on('open',()=>guestJoined(c));c.on('data',guestData);c.on('close',()=>{if(conn===c)dropGuest()});c.on('error',()=>{if(conn===c)dropGuest()})})}
+function hostRoom(fixed,auto){roomCode=fixed||newCode();lstat('Raum wird erstellt …');const code=roomCode;let tries=0;
+ const ready=()=>{if(!NET&&roomCode===code){NET='host';if(auto){roomUi();startGame()}else showRoomCard()}};
+ const mkPeer=()=>{peer=new Peer('klebebaron-'+code,peerOpts());peer.on('open',ready);
+  peer.on('error',e=>{if(e.type==='unavailable-id'){peer.destroy();if(fixed){if(++tries<12)setTimeout(mkPeer,2500)}else{if(relayHost)relayHost.close();if(!NET)hostRoom()}}});
+  peer.on('connection',c=>{if(conn&&conn.open){c.on('open',()=>c.close());return}c.on('open',()=>guestJoined(c));c.on('data',guestData);c.on('close',()=>{if(conn===c)dropGuest()});c.on('error',()=>{if(conn===c)dropGuest()})})};
+ if(typeof Peer!=='undefined')mkPeer();
  relayHost=relayConnect(code,'h',rc=>{ready();rc.on('data',m=>{const r=rc.repl||rc;if(m&&m.a==='hello'){if(!conn||!conn.open||(conn.relay&&performance.now()-conn.last>4000)){guestJoined(r)}else if(conn===r)try{r.send(snap())}catch(e){}return}if(conn===r)guestData(m)})});
  setTimeout(()=>{if(!NET&&roomCode===code)lstat('Raum konnte nicht erstellt werden. Internet prüfen und nochmal versuchen.',true)},20000)}
 function dropGuest(){if(!players.g.active)return;players.g.active=false;players.g.g.visible=false;benches.forEach(b=>{if(b.user==='g')b.user=null});conn=null;toast('Dein Partner hat den Raum verlassen');roomUi()}
@@ -1009,7 +1010,8 @@ function ui(){$('money').textContent=eur(S.money);$('ips').textContent=eur(ipsVa
  pr.hidden=!t;pr.innerHTML=t;pr.classList.toggle('bad',bad)}
 function dustGain(){return 2+S.planet*2+Math.floor(S.rep/4)}
 function travel(){if(!isHost())return;const keep={muted:S.muted,rep:S.rep,dust:S.dust+dustGain(),planet:S.planet+1,ach:S.ach,perf:S.perf,gold:S.gold,orders:S.orders,grolls:S.grolls,strips:S.strips,tears:S.tears,played:S.played,total:S.total,ms:S.ms};
- emit({t:'travel'});const n=Object.assign(JSON.parse(JSON.stringify(D)),keep);try{localStorage.setItem(KEY,JSON.stringify(n))}catch(e){}wiping=true;setTimeout(()=>location.reload(),NET?600:50)}
+ emit({t:'travel',pl:PL(S.planet+1)});travelSplash(PL(S.planet+1));const n=Object.assign(JSON.parse(JSON.stringify(D)),keep);try{localStorage.setItem(KEY,JSON.stringify(n));localStorage.setItem('kb-resume',JSON.stringify({mode:NET==='host'?'host':'solo',code:roomCode,t:Date.now()}))}catch(e){}wiping=true;setTimeout(()=>{try{if(peer)peer.destroy()}catch(e){}location.reload()},NET?1200:900)}
+function travelSplash(pl){$('win').hidden=true;const o=$('lost');o.querySelector('h2').textContent='Auf zum '+pl+'! 🚀';o.querySelector('p').textContent='Die Rakete startet … gleich geht es auf dem '+pl+' weiter.';o.querySelector('button').hidden=true;o.hidden=false}
 function win(){$('wh').textContent='Der '+PL(S.planet)+' klebt fest.';$('wtravel').innerHTML='Weiter zum '+PL(S.planet+1)+'<small>Neue Fabrik, dafür +'+dustGain()+' Sternenstaub (alles dauerhaft +'+(dustGain()*25)+' %)</small>';$('wtravel').disabled=!isHost();const h=Math.floor(S.played/3600),m=Math.floor(S.played%3600/60);$('wtext').textContent='Nach '+(h?h+' Std. ':'')+m+' Min., '+S.strips.toLocaleString('de-DE')+' handgezogenen Streifen und '+len(S.total)+' Klebeband hängt der '+PL(S.planet)+' jetzt an der Erde.';$('win').hidden=false}
 const setMute=()=>$('mute').textContent=S.muted?'Ton aus':'Ton an';
 $('mute').addEventListener('click',e=>{S.muted=!S.muted;setMute();audio();e.target.blur();if(isHost())save()});
@@ -1043,6 +1045,12 @@ if(TOUCH){document.body.classList.add('touch');$('touch').hidden=false;$('bbuild
   if(k==='jump'&&me.mode==='walk'&&me.y<=0){me.vy=5.2;sfx.jump()}})}window.addEventListener('pagehide',save);
 {const m=location.hash.match(/^#raum-([A-Z0-9]{4})$/i);if(m)$('jcode').value=m[1].toUpperCase()}
 $('lobby').hidden=false;
+/* Nach einer Planeten-Reise direkt weiterspielen */
+{let r=null;try{r=JSON.parse(localStorage.getItem('kb-resume')||'null');localStorage.removeItem('kb-resume')}catch(e){}
+ if(r&&Date.now()-r.t<120000){const hi=()=>setTimeout(()=>toast('Willkommen auf dem '+PL(S.planet)+'! Alles bringt jetzt ×'+nf(bonusM(),2)),600);
+  if(r.mode==='solo'){startGame();hi()}
+  else if(r.mode==='host'&&r.code){startGame();hostRoom(r.code,true);hi()}
+  else if(r.mode==='join'&&r.code){$('jcode').value=r.code;lstat('Reise läuft, verbinde wieder mit Raum '+r.code+' …');setTimeout(joinRoom,1500)}}}
 function frame(t){const dt=Math.min(.05,(t-clockT)/1000);clockT=t;tt+=dt;if(isHost()&&started)simulate(dt);const pdt=slowT>0?dt*.3:dt;slowT=Math.max(0,slowT-dt);present(pdt);confStep(pdt);renderer.render(scene,camera);requestAnimationFrame(frame)}
 setMute();layout();requestAnimationFrame(frame);
 if(new URLSearchParams(location.search).has('test'))window.__kb={force(){found=true},setDay(v){dayP=v},get O(){return O},belts,cats,SIDE,players,S:()=>S,stations,docks,benches,helpers,get me(){return me},act,step:n=>{for(let i=0;i<n;i++){if(isHost()&&started)simulate(.05);present(.05)}},net:()=>NET};
