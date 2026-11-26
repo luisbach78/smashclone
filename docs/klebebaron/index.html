@@ -150,6 +150,7 @@ body.touch.bench #joy,body.touch.bench #tbtns button:not(.big){display:none}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 {
 const $=id=>document.getElementById(id);
@@ -678,7 +679,7 @@ function simulate(dt){S.played+=dt;if(rushT>0)rushT=Math.max(0,rushT-dt);
  achAcc+=dt;if(achAcc>1){achAcc=0;for(const a of ACH)if(!S.ach.includes(a.id)&&a.c()){S.ach.push(a.id);emit({t:'toast',m:'🏆 Erfolg: '+a.n+'! Alle Einnahmen +3 %'});emit({t:'sfx',k:'perfect'});save()}}
  while(S.ms<MS.length&&S.total>=MS[S.ms][0]){emit({t:'toast',m:MS[S.ms][1]+' ist eingewickelt!'});S.ms++}
  saveAcc+=dt;if(saveAcc>5){saveAcc=0;save()}
- if(NET==='host'&&conn&&conn.open){netAcc+=dt;if(netAcc>=.1){netAcc=0;try{conn.send(snap())}catch(e){}evq=[]}}}
+ if(NET==='host'&&conn&&conn.open){netAcc+=dt;if(netAcc>=(conn.relay?.2:.1)){netAcc=0;try{conn.send(snap())}catch(e){}evq=[]}}}
 /* ---------- Praktikanten-KI ---------- */
 const CORR=[-6.6,-2,2,6.6];
 function route(fx,fz,tx,tz){if(Math.abs(fz-tz)<.4)return[[tx,tz]];let c=CORR[0],best=1e9;for(const k of CORR){const d=Math.abs(k-fx)+Math.abs(k-tx);if(d<best){best=d;c=k}}return[[c,fz],[c,tz],[tx,tz]]}
@@ -872,30 +873,54 @@ const ICE={iceServers:[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.googl
 function peerOpts(){const q=new URLSearchParams(location.search).get('peer');if(!q)return{debug:0,config:ICE};const[h,p]=q.split(':');return{host:h,port:+p||9000,path:'/',secure:false,debug:0}}
 const lstat=(t,bad)=>{$('lstat').textContent=t;$('lstat').classList.toggle('bad',!!bad)};
 function newCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';for(let i=0;i<4;i++)c+=A[Math.floor(Math.random()*A.length)];return c}
-function hostRoom(){if(typeof Peer==='undefined'){lstat('Online-Modus geht hier nicht. Öffne das Spiel über den GitHub-Link.',true);return}
- roomCode=newCode();lstat('Raum wird erstellt …');peer=new Peer('klebebaron-'+roomCode,peerOpts());
- peer.on('open',()=>{NET='host';showRoomCard()});
- peer.on('error',e=>{if(e.type==='unavailable-id'){peer.destroy();hostRoom();return}if(!NET)lstat('Raum konnte nicht erstellt werden ('+e.type+'). Netz prüfen und nochmal versuchen.',true)});
- peer.on('connection',c=>{if(conn&&conn.open){c.on('open',()=>c.close());return}conn=c;
-  c.on('open',()=>{if(!started)startGame();const g=players.g;Object.assign(g,{active:true,x:2,z:9.3,tx:2,tz:9.3,carry:0,kind:null,vals:[],mode:'walk'});g.g.visible=true;
-   emit({t:'toast',m:'Dein Partner ist da! Ihr teilt euch Kasse und Fabrik'});sfx.join();roomUi();try{conn.send(snap())}catch(e){}evq=[]});
-  c.on('data',m=>{if(!m||typeof m!=='object')return;if(m.a==='pos'){const g=players.g;g.tx=+m.x||0;g.tz=+m.z||0;g.y=+m.y||0;g.face=+m.f||0;g.spd=+m.s||0;g.mode=m.b?'bench':'walk';return}handle(m,'g')});
-  c.on('close',dropGuest);c.on('error',dropGuest)})}
+/* Verbindung: zuerst direkt (WebRTC), sonst über Relay auf Port 443 (MQTT über WebSocket) */
+const QS=new URLSearchParams(location.search);
+const RELAYS=QS.get('relay')?[QS.get('relay')]:['wss://mqtt.eclipseprojects.io:443/mqtt','wss://test.mosquitto.org:8081'];
+function relayConnect(code,role,onReady,ri){ri=ri||0;if(typeof mqtt==='undefined'||ri>=RELAYS.length)return null;
+ const base='klebebaron-v4/'+code+'/',cli=mqtt.connect(RELAYS[ri],{clientId:'kb'+role+Math.random().toString(36).slice(2,10),reconnectPeriod:2500,connectTimeout:9000,clean:true,keepalive:20});
+ const rc={relay:true,open:false,last:performance.now(),hs:{},cli,on(ev,f){(this.hs[ev]=this.hs[ev]||[]).push(f)},fire(ev,x){(this.hs[ev]||[]).forEach(f=>f(x))},
+  send(o){if(cli.connected)cli.publish(base+role,JSON.stringify(o),{qos:0})},close(){try{cli.end(true)}catch(e){}}};
+ let ok=false;const fail=setTimeout(()=>{if(!ok){rc.close();const n=relayConnect(code,role,onReady,ri+1);if(n)rc.repl=n}},10000);
+ cli.on('connect',()=>{cli.subscribe(base+(role==='h'?'g':'h'),()=>{if(ok)return;ok=true;clearTimeout(fail);rc.open=true;onReady&&onReady(rc)})});
+ cli.on('message',(t,p)=>{rc.last=performance.now();let m;try{m=JSON.parse(p.toString())}catch(e){return}rc.fire('data',m)});
+ cli.on('error',()=>{});return rc}
+function guestJoined(c){conn=c;if(!started)startGame();const g=players.g;Object.assign(g,{active:true,x:2,z:9.3,tx:2,tz:9.3,carry:0,kind:null,vals:[],mode:'walk'});g.g.visible=true;
+ emit({t:'toast',m:'Dein Partner ist da! Ihr teilt euch Kasse und Fabrik'+(c.relay?' (über Relay verbunden)':'')});sfx.join();roomUi();try{conn.send(snap())}catch(e){}evq=[]}
+function guestData(m){if(!m||typeof m!=='object')return;if(m.a==='pos'){const g=players.g;g.tx=+m.x||0;g.tz=+m.z||0;g.y=+m.y||0;g.face=+m.f||0;g.spd=+m.s||0;g.mode=m.b?'bench':'walk';return}if(m.a==='hello')return;handle(m,'g')}
+let relayHost=null;
+function hostRoom(){roomCode=newCode();lstat('Raum wird erstellt …');const code=roomCode;
+ const ready=()=>{if(!NET&&roomCode===code){NET='host';showRoomCard()}};
+ if(typeof Peer!=='undefined'){peer=new Peer('klebebaron-'+code,peerOpts());peer.on('open',ready);
+  peer.on('error',e=>{if(e.type==='unavailable-id'){peer.destroy();if(relayHost)relayHost.close();if(!NET)hostRoom()}});
+  peer.on('connection',c=>{if(conn&&conn.open){c.on('open',()=>c.close());return}c.on('open',()=>guestJoined(c));c.on('data',guestData);c.on('close',()=>{if(conn===c)dropGuest()});c.on('error',()=>{if(conn===c)dropGuest()})})}
+ relayHost=relayConnect(code,'h',rc=>{ready();rc.on('data',m=>{const r=rc.repl||rc;if(m&&m.a==='hello'){if(!conn||!conn.open||(conn.relay&&performance.now()-conn.last>4000)){guestJoined(r)}else if(conn===r)try{r.send(snap())}catch(e){}return}if(conn===r)guestData(m)})});
+ setTimeout(()=>{if(!NET&&roomCode===code)lstat('Raum konnte nicht erstellt werden. Internet prüfen und nochmal versuchen.',true)},20000)}
 function dropGuest(){if(!players.g.active)return;players.g.active=false;players.g.g.visible=false;benches.forEach(b=>{if(b.user==='g')b.user=null});conn=null;toast('Dein Partner hat den Raum verlassen');roomUi()}
 function showRoomCard(){const url=location.href.split('#')[0]+'#raum-'+roomCode;
  $('lcard').innerHTML='<h2>Raum offen</h2><p>Schick deinem Partner diesen Code. Er öffnet das Spiel, gibt den Code ein und landet bei dir auf dem Hof.</p><div class="code">'+roomCode+'</div><button class="buy alt" id="copy">Link mit Code kopieren</button><button class="buy" id="hgo">Schon mal anfangen</button><div id="lstat">Wartet auf Partner … du kannst schon loslegen.</div>';
  $('copy').addEventListener('click',()=>{navigator.clipboard.writeText(url).then(()=>{$('copy').textContent='Kopiert!'}).catch(()=>{$('copy').textContent=url})});
  $('hgo').addEventListener('click',()=>{audio();startGame()});roomUi()}
-function roomUi(){if(!NET){$('room').hidden=true;return}$('room').hidden=false;$('roomc').textContent=roomCode;const ok=NET==='host'?players.g.active:true;$('roomt').textContent=NET==='host'?(ok?'Raum · Partner da':'Raum · wartet auf Partner'):'Raum · verbunden';$('room').classList.toggle('ok',ok)}
+function roomUi(){if(!NET){$('room').hidden=true;return}$('room').hidden=false;$('roomc').textContent=roomCode;const ok=NET==='host'?players.g.active:true;$('roomt').textContent=NET==='host'?(ok?'Raum · Partner da':'Raum · wartet auf Partner'):(conn&&conn.relay?'Raum · über Relay':'Raum · verbunden');$('room').classList.toggle('ok',ok)}
+function guestOpen(c){if(NET==='guest')return;conn=c;NET='guest';myId='g';me=players.g;me.active=true;me.g.visible=true;players.h.g.visible=true;const mu=S.muted;S=JSON.parse(JSON.stringify(D));S.muted=mu;
+ for(const k in players)players[k].x=players[k].tx;roomUi();c.send({a:'hello'})}
+let relayGuest=null;
 function joinRoom(){const code=$('jcode').value.trim().toUpperCase();if(code.length!==4){lstat('Der Code hat 4 Zeichen',true);return}
- if(typeof Peer==='undefined'){lstat('Online-Modus geht hier nicht. Öffne das Spiel über den GitHub-Link.',true);return}
- lstat('Verbinde mit Raum '+code+' …');clearTimeout(window.joinTO);window.joinTO=setTimeout(()=>{if(NET!=='guest')lstat('Keine Verbindung. Im Uni-WLAN (eduroam) blockiert die Firewall oft solche Spiel-Verbindungen. Probiert einen Handy-Hotspot.',true)},15000);roomCode=code;peer=new Peer(undefined,peerOpts());
- peer.on('open',()=>{conn=peer.connect('klebebaron-'+code,{reliable:true});
-  conn.on('open',()=>{NET='guest';myId='g';me=players.g;me.active=true;me.g.visible=true;players.h.g.visible=true;const mu=S.muted;S=JSON.parse(JSON.stringify(D));S.muted=mu;
-   for(const k in players)players[k].x=players[k].tx;roomUi();conn.send({a:'hello'})});
-  conn.on('data',m=>{if(m&&m.t==='s')applySnap(m)});conn.on('close',()=>{if(NET==='guest')$('lost').hidden=false})});
- peer.on('error',e=>{lstat(e.type==='peer-unavailable'?'Raum '+code+' nicht gefunden. Code richtig? Ist der Raum noch offen?':'Verbindung klappt nicht ('+e.type+')',true)})}
-setInterval(()=>{if(NET==='guest'&&conn&&conn.open)conn.send({a:'pos',x:r2(me.x),z:r2(me.z),y:r2(me.y),f:r2(me.face),s:r2(me.spd),b:me.mode==='bench'?1:0})},60);
+ lstat('Verbinde mit Raum '+code+' …');roomCode=code;let tried=false;
+ const viaRelay=()=>{if(tried||NET==='guest')return;tried=true;lstat('Direkte Verbindung blockiert, versuche es über den Relay-Server …');
+  relayGuest=relayConnect(code,'g',rc=>{rc.on('data',m=>{if(m&&m.t==='s'){if(NET!=='guest')guestOpen(rc.repl||rc);if(conn&&conn.relay)applySnap(m)}});
+   const hi=setInterval(()=>{if(gotSnap){clearInterval(hi);return}(rc.repl||rc).send({a:'hello'})},1200);(rc.repl||rc).send({a:'hello'})});
+  if(!relayGuest)lstat('Keine Verbindung möglich. Seite neu laden und nochmal versuchen.',true)};
+ clearTimeout(window.joinTO);window.joinTO=setTimeout(()=>{if(!gotSnap)lstat('Raum '+code+' nicht gefunden oder keine Verbindung. Code richtig? Ist der Raum beim Partner noch offen?',true)},30000);
+ if(typeof Peer==='undefined'){viaRelay();return}
+ peer=new Peer(undefined,peerOpts());const fb=setTimeout(viaRelay,7000);
+ peer.on('open',()=>{const c=peer.connect('klebebaron-'+code,{reliable:true});
+  c.on('open',()=>{if(NET==='guest')return;clearTimeout(fb);guestOpen(c)});
+  c.on('data',m=>{if(m&&m.t==='s'&&conn===c)applySnap(m)});c.on('close',()=>{if(NET==='guest'&&conn===c)$('lost').hidden=false})});
+ peer.on('error',()=>viaRelay())}
+setInterval(()=>{const now=performance.now();
+ if(NET==='host'&&conn&&conn.relay&&players.g.active&&now-conn.last>12000)dropGuest();
+ if(NET==='guest'&&conn&&conn.relay&&gotSnap&&now-conn.last>12000)$('lost').hidden=false},2000);
+let posT=0;setInterval(()=>{if(NET==='guest'&&conn&&conn.open){if(conn.relay&&(posT++%2))return;conn.send({a:'pos',x:r2(me.x),z:r2(me.z),y:r2(me.y),f:r2(me.face),s:r2(me.spd),b:me.mode==='bench'?1:0})}},60);
 
 /* ---------- Darstellung (alle) ---------- */
 function moveMe(dt){let ix=0,iz=0;if(me.mode==='walk'&&!menuOpen&&started){if(keys.w||keys.arrowup)iz-=1;if(keys.s||keys.arrowdown)iz+=1;if(keys.a||keys.arrowleft)ix-=1;if(keys.d||keys.arrowright)ix+=1}
